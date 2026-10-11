@@ -21,6 +21,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 // 分类规则与站点构建时共用同一份实现，避免两处逻辑漂移
 import { classifySkill } from '../src/lib/classify.mjs'
+import { AI_CACHE_FILE, loadAiCache, lookupAiCategory } from '../src/lib/ai-cache.mjs'
 
 /* ------------------------------ 配置 ------------------------------ */
 
@@ -220,9 +221,11 @@ function dedupe(items) {
 }
 
 /**
- * 分类：委托给共享规则层（src/lib/classify.mjs），与站点构建时行为完全一致。
+ * 分类：AI 记忆库优先，其次共享规则层（src/lib/classify.mjs）。
+ * 与站点构建时（loader）的判定顺序完全一致，保证两边产出的分类不会打架。
  */
-function pickCategory(frontmatter, dirName, dir) {
+function pickCategory(frontmatter, dirName, dir, aiCategory) {
+  if (aiCategory) return aiCategory
   return classifySkill({ frontmatter, dirName, dir }).category
 }
 
@@ -247,7 +250,7 @@ function parseSkill(raw, ctx) {
       titleEn,
       description: descriptionZh ?? descriptionEn,
       descriptionEn,
-      category: pickCategory(frontmatter, ctx.dirName, ctx.dir),
+      category: pickCategory(frontmatter, ctx.dirName, ctx.dir, ctx.aiCategory),
       tags: dedupe([...asStringArray(frontmatter.tags)]),
       github: dirSegment ? `https://github.com/${ctx.repo}/tree/${refSegment}/${dirSegment}` : `https://github.com/${ctx.repo}/tree/${refSegment}`,
       author: ctx.owner,
@@ -442,12 +445,14 @@ async function syncRepo(target) {
     try {
       const raw = await fetchRaw(target.repo, ref, file.path)
       const dir = skillDirectory(file.path)
+      const dirName = dir.split('/').filter(Boolean).pop() ?? name
       const parsed = parseSkill(raw, {
         repo: target.repo,
         owner,
         ref,
         dir,
-        dirName: dir.split('/').filter(Boolean).pop() ?? name,
+        dirName,
+        aiCategory: lookupAiCategory(aiCache, slugify(dirName) || slugify(name), file.sha),
       })
       nextFiles[file.path] = { sha: file.sha, frontmatter: parsed.frontmatter, body: parsed.body, data: parsed.data }
       stats.filesFetched++
@@ -489,11 +494,19 @@ async function syncRepo(target) {
  * 取得一条缓存文件的站点字段。
  * 旧版 loader 写入的缓存只有 {sha, frontmatter, body}，没有 data 字段，
  * 这里现场从 frontmatter 推导，保证历史缓存也能正确参与合并。
+ *
+ * AI 记忆库优先：缓存里的 data.category 是规则层算的，
+ * 若命中记忆库（内容未变）必须覆盖，否则绝大多数条目的 AI 结果会被缓存绕过。
  */
 function resolveEntryData(entry, ctx) {
-  if (entry.data && typeof entry.data === 'object') return entry.data
-  if (!entry.frontmatter) return undefined
-  return parseSkill(buildSyntheticSource(entry.frontmatter), ctx).data
+  const base = entry.data && typeof entry.data === 'object'
+    ? entry.data
+    : entry.frontmatter
+      ? parseSkill(buildSyntheticSource(entry.frontmatter), ctx).data
+      : undefined
+  if (!base) return undefined
+  if (!ctx.aiCategory) return base
+  return { ...base, category: ctx.aiCategory }
 }
 
 /** 用缓存里的 frontmatter 拼一段最小 Markdown，供 parseSkill 复用同一套映射逻辑 */
@@ -523,7 +536,14 @@ function mergeBySkillId(ordered, perRepoFiles, perRepoRefs, baseline) {
       if (!id) continue
       const [owner] = String(target.repo).split('/')
       const ref = perRepoRefs.get(target.repo) ?? ''
-      const data = resolveEntryData(entry, { repo: target.repo, owner, ref, dir, dirName })
+      const data = resolveEntryData(entry, {
+        repo: target.repo,
+        owner,
+        ref,
+        dir,
+        dirName,
+        aiCategory: lookupAiCategory(aiCache, id, entry.sha),
+      })
       if (!data) continue
       const record = {
         id,
@@ -568,6 +588,11 @@ async function main() {
   )
 
   fs.mkdirSync(CACHE_DIR, { recursive: true })
+
+  // AI 分类记忆库：命中时用 AI 结果覆盖规则层分类（与站点构建时行为一致）
+  const aiCache = loadAiCache(path.join(ROOT, AI_CACHE_FILE))
+  const aiCached = Object.keys(aiCache.entries).length
+  if (aiCached > 0) log(`载入 AI 分类记忆 ${aiCached} 条（内容未变时优先采用）`)
 
   // 1) 发现
   const discoveryBefore = readJson(DISCOVERY_FILE)

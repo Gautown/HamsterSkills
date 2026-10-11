@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 import type { Loader, LoaderContext } from 'astro/loaders'
 import { CATEGORY_KEYS, type CategoryKey } from '../lib/categories'
 import { classifySkill } from '../lib/classify.mjs'
+import { AI_CACHE_FILE, loadAiCache, lookupAiCategory } from '../lib/ai-cache.mjs'
+import type { AiCacheFile } from '../lib/ai-cache.mjs'
 
 /* ------------------------------ 公共类型 ------------------------------ */
 
@@ -131,6 +133,8 @@ interface SkillContext {
   dir: string
   /** 目录最后一段（id / 显示名回退） */
   dirName: string
+  /** AI 记忆库给出的分类（存在且内容未变时优先于规则层） */
+  aiCategory?: CategoryKey
 }
 
 /* ------------------------------ 常量 ------------------------------ */
@@ -150,6 +154,18 @@ const RAW_RETRY_BASE_DELAY_MS = 700
 const SEARCH_PER_PAGE = 100
 const UNLIMITED = Number.POSITIVE_INFINITY
 
+/**
+ * 定位 AI 分类记忆库的路径。
+ *
+ * 记忆库是全局的（按 skill id 索引，不属于任何单个仓库的语料缓存），
+ * 因此固定放在 Astro 项目根的 .cache/ 下——用 config.root 解析，
+ * 不能用 import.meta.url（那会解析到 src/loaders/.cache，位置错误）。
+ */
+function resolveAiCachePath(root: URL | undefined): string {
+  const base = root ?? new URL('../../', import.meta.url)
+  return fileURLToPath(new URL(AI_CACHE_FILE, base))
+}
+
 /* ------------------------------ Loader ------------------------------ */
 
 export function githubSkills(options: GitHubSkillsOptions): Loader {
@@ -166,6 +182,14 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
     async load(context) {
       const { logger } = context
       const state: LoadState = { rateLimited: false }
+
+      // AI 分类记忆库（由 scripts/ai-classify.mjs 生成）。
+      // 每次构建加载一次；文件不存在属正常情况（尚未跑过 AI 分类），此时全部走规则层。
+      const aiCache: AiCacheFile = loadAiCache(resolveAiCachePath(context.config.root))
+      const aiCached = Object.keys(aiCache.entries).length
+      if (aiCached > 0) {
+        logger.info(`[github-skills] 已载入 AI 分类记忆：${aiCached} 条（记忆库命中时优先采用 AI 结果）`)
+      }
 
       const withDefaults = (repo: RemoteRepo): RemoteRepo => ({
         ...repo,
@@ -209,6 +233,7 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
           ordered[i],
           { ...resolved, maxSkillsLeft: totalCap - totalLoaded, perRepoMaxSkills: perRepoCap },
           state,
+          aiCache,
         )
       }
 
@@ -310,6 +335,7 @@ async function loadRepo(
   cfg: RemoteRepo,
   opts: LoadRepoOptions,
   state: LoadState,
+  aiCache: AiCacheFile,
 ): Promise<number> {
   const { store, logger, parseData, renderMarkdown, generateDigest, config } = context
   const [owner, name] = cfg.repo.split('/')
@@ -481,7 +507,16 @@ async function loadRepo(
 
     const data = await parseData({
       id,
-      data: mapSkillData(entry.frontmatter, { cfg, owner, repo: cfg.repo, ref, dir, dirName }),
+      data: mapSkillData(entry.frontmatter, {
+        cfg,
+        owner,
+        repo: cfg.repo,
+        ref,
+        dir,
+        dirName,
+        // AI 记忆库优先：内容未变时采用历史 AI 分类结果
+        aiCategory: lookupAiCategory(aiCache, id, entry.sha),
+      }),
     })
     store.set({ id, data, body: entry.body, digest: generateDigest({ data, body: entry.body }) })
     loaded++
@@ -549,6 +584,9 @@ function mapSkillData(frontmatter: Record<string, unknown>, ctx: SkillContext): 
  * 规则层按打分制判定，并输出置信度；置信度为 0 表示规则完全无法判断。
  */
 function pickCategory(frontmatter: Record<string, unknown>, ctx: SkillContext): CategoryKey {
+  // AI 分类结果优先：记忆库按「skill id + 内容 sha」匹配，
+  // 上游没改动就复用历史结果，内容变了自动退回规则层重新判定。
+  if (ctx.aiCategory) return ctx.aiCategory
   return classifySkill({
     frontmatter,
     dirName: ctx.dirName,
@@ -601,10 +639,6 @@ function titleCase(value: string): string {
 function stripFrontmatter(raw: string): string {
   const match = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(raw)
   return match ? raw.slice(match[0].length) : raw
-}
-
-function isCategoryKey(value: string): value is CategoryKey {
-  return (CATEGORY_KEYS as readonly string[]).includes(value)
 }
 
 function asString(value: unknown): string | undefined {
