@@ -22,6 +22,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  sync:
+    name: 每日同步 GitHub 技能
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      changed: ${{ steps.sync.outputs.summary }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SITE_URL: ${{ secrets.SITE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: 恢复语料缓存（增量同步的关键）
+        uses: actions/cache@v4
+        with:
+          path: .cache/skills-remote
+          key: skills-corpus-${{ github.run_id }}
+          restore-keys: |
+            skills-corpus-
+
+      - name: 同步（新增即写入、已有按 id 覆盖）
+        id: sync
+        run: npm run sync | tee sync-output.txt
+
+      - name: 保存语料缓存
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/skills-remote
+          key: skills-corpus-${{ github.run_id }}
+
+      - name: 上传同步产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: skills-data
+          path: data/skills.json
+          retention-days: 7
+          if-no-files-found: error
+
   refresh:
     name: 同步并部署
     runs-on: ubuntu-latest
