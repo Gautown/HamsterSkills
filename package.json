@@ -9,6 +9,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "sync": "node scripts/sync-skills.mjs",
+    "test:classify": "node --test scripts/classify.test.mjs",
     "sync:dry": "node scripts/sync-skills.mjs --dry-run",
     "sync:force": "node scripts/sync-skills.mjs --force",
     "split": "node scripts/split-assets.mjs",

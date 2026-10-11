@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Loader, LoaderContext } from 'astro/loaders'
 import { CATEGORY_KEYS, type CategoryKey } from '../lib/categories'
+import { classifySkill } from '../lib/classify.mjs'
 
 /* ------------------------------ 公共类型 ------------------------------ */
 
@@ -148,20 +149,6 @@ const RAW_FETCH_RETRIES = 2
 const RAW_RETRY_BASE_DELAY_MS = 700
 const SEARCH_PER_PAGE = 100
 const UNLIMITED = Number.POSITIVE_INFINITY
-
-/** 分类推断的关键词（顺序即优先级，dev 兜底放最后） */
-const CATEGORY_KEYWORDS: Array<[CategoryKey, RegExp]> = [
-  ['office', /pdf|docx?|pptx?|xlsx?|excel|powerpoint|spreadsheet|slide|document|word\b/i],
-  ['design', /design|ui\b|ux\b|css|figma|svg|icon|font|colou?r|palette|illustration|logo|theme|art\b/i],
-  ['writing', /writ|blog|copywrit|article|essay|newsletter|proofread|translat/i],
-  ['data', /data|sql|analytic|dashboard|chart|visuali[sz]|pandas|etl|spreadsheet/i],
-  ['research', /research|paper|academic|literature|survey|web[ -]?search|scrape|fetch/i],
-  ['business', /market|seo\b|sales|business|invoice|startup|pitch|advertis|ecommerce|pricing/i],
-  ['education', /teach|learn|course|tutor|exam|quiz|education/i],
-  ['life', /health|fitness|recipe|travel|habit|wellness|life\b/i],
-  ['prompting', /prompt|skill[ -]?(creator|writing|generator)/i],
-  ['dev', /code|coding|dev\b|api\b|sdk|git\b|test|debug|refactor|deploy|docker|kubernetes|database|frontend|backend|cli\b|mcp\b|security|lint|build/i],
-]
 
 /* ------------------------------ Loader ------------------------------ */
 
@@ -557,24 +544,18 @@ function mapSkillData(frontmatter: Record<string, unknown>, ctx: SkillContext): 
   }
 }
 
+/**
+ * 分类：委托给共享规则层（src/lib/classify.mjs），与同步脚本行为完全一致。
+ * 规则层按打分制判定，并输出置信度；置信度为 0 表示规则完全无法判断。
+ */
 function pickCategory(frontmatter: Record<string, unknown>, ctx: SkillContext): CategoryKey {
-  const declared = asString(frontmatter.category)
-  if (declared && isCategoryKey(declared)) return declared
-  const mapped = ctx.cfg.categoryMap?.[ctx.dirName]
-  if (mapped) return mapped
-  const fromPath = ctx.dir.split('/').filter(Boolean).find(isCategoryKey)
-  if (fromPath) return fromPath
-  const inferred = inferCategory(`${ctx.dirName} ${asString(frontmatter.description) ?? ''}`)
-  if (inferred) return inferred
-  return ctx.cfg.category ?? 'dev'
-}
-
-/** 按名称 + 描述做保守的关键词分类推断（仅当其它来源都没有时使用） */
-function inferCategory(text: string): CategoryKey | undefined {
-  for (const [category, pattern] of CATEGORY_KEYWORDS) {
-    if (pattern.test(text)) return category
-  }
-  return undefined
+  return classifySkill({
+    frontmatter,
+    dirName: ctx.dirName,
+    dir: ctx.dir,
+    fallback: ctx.cfg.category ?? 'dev',
+    categoryMap: ctx.cfg.categoryMap ?? {},
+  }).category
 }
 
 /* ------------------------------ 工具函数 ------------------------------ */

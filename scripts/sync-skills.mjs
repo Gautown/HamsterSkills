@@ -19,29 +19,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// 分类规则与站点构建时共用同一份实现，避免两处逻辑漂移
+import { classifySkill } from '../src/lib/classify.mjs'
 
 /* ------------------------------ 配置 ------------------------------ */
 
-/** @typedef {'dev'|'office'|'design'|'writing'|'data'|'research'|'business'|'education'|'life'|'prompting'} CategoryKey */
-
-/** @type {const} */
-const CATEGORY_KEYS = /** @type {const} */ ([
-  'dev', 'office', 'design', 'writing', 'data', 'research', 'business', 'education', 'life', 'prompting',
-])
-
-/** 分类推断关键词（顺序即优先级，与 loader 保持一致） */
-const CATEGORY_KEYWORDS = /** @type {Array<[CategoryKey, RegExp]>} */ ([
-  ['office', /pdf|docx?|pptx?|xlsx?|excel|powerpoint|spreadsheet|slide|document|word\b/i],
-  ['design', /design|ui\b|ux\b|css|figma|svg|icon|font|colou?r|palette|illustration|logo|theme|art\b/i],
-  ['writing', /writ|blog|copywrit|article|essay|newsletter|proofread|translat/i],
-  ['data', /data|sql|analytic|dashboard|chart|visuali[sz]|pandas|etl|spreadsheet/i],
-  ['research', /research|paper|academic|literature|survey|web[ -]?search|scrape|fetch/i],
-  ['business', /market|seo\b|sales|business|invoice|startup|pitch|advertis|ecommerce|pricing/i],
-  ['education', /teach|learn|course|tutor|exam|quiz|education/i],
-  ['life', /health|fitness|recipe|travel|habit|wellness|life\b/i],
-  ['prompting', /prompt|skill[ -]?(creator|writing|generator)/i],
-  ['dev', /code|coding|dev\b|api\b|sdk|git\b|test|debug|refactor|deploy|docker|kubernetes|database|frontend|backend|cli\b|mcp\b|security|lint|build/i],
-])
+/** @typedef {import('../src/lib/classify.mjs').CategoryKey} CategoryKey */
 
 const ROOT = process.cwd()
 const CACHE_DIR = path.join(ROOT, '.cache', 'skills-remote')
@@ -236,21 +219,11 @@ function dedupe(items) {
   return [...new Set(items.map(i => i.trim()).filter(Boolean))]
 }
 
-function isCategoryKey(value) {
-  return CATEGORY_KEYS.includes(value)
-}
-
-function inferCategory(text) {
-  for (const [category, pattern] of CATEGORY_KEYWORDS) if (pattern.test(text)) return category
-  return undefined
-}
-
+/**
+ * 分类：委托给共享规则层（src/lib/classify.mjs），与站点构建时行为完全一致。
+ */
 function pickCategory(frontmatter, dirName, dir) {
-  const declared = asString(frontmatter.category)
-  if (declared && isCategoryKey(declared)) return declared
-  const fromPath = dir.split('/').filter(Boolean).find(isCategoryKey)
-  if (fromPath) return fromPath
-  return inferCategory(`${dirName} ${asString(frontmatter.description) ?? ''}`) ?? 'dev'
+  return classifySkill({ frontmatter, dirName, dir }).category
 }
 
 /** 解析 SKILL.md 文本 → { frontmatter, body, data } */
