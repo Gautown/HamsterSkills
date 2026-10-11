@@ -29,6 +29,8 @@ export interface RemoteRepo {
   pushedAt?: string
   /** 仓库 star 数（自动发现提供，用于详情页展示热度，零额外请求） */
   stars?: number
+  /** 已尝试过获取 star 数且失败；本次构建不再重试（仅影响热度展示） */
+  noStarsLookup?: boolean
   /** 仓库级失败是否终止构建；显式配置默认 true，自动发现默认 false */
   strict?: boolean
   /** 单仓库 skill 数量上限（覆盖 perRepoMaxSkills） */
@@ -374,6 +376,24 @@ async function loadRepo(
   }
 
   const strict = cfg.strict !== false
+
+  /*
+   * 显式配置的仓库可能不在自动发现的前 N 名里（实测 anthropics/skills 有 18 万星，
+   * 仍可能因 id 去重跌出前 300），此时侧栏会完全没有热度数据。
+   * 这里对「没有 stars 且尚未尝试过」的仓库补一次 API 查询，
+   * 并把结果写进语料缓存，后续构建不再重复请求。
+   */
+  if (cfg.stars == null && !cfg.noStarsLookup) {
+    try {
+      const info = await ghJson<{ stargazers_count: number }>(`${opts.apiBase}/repos/${cfg.repo}`, opts.token)
+      cfg.stars = info.stargazers_count
+    } catch (error) {
+      // 拿不到 stars 不影响构建：仅少一个展示项
+      logger.warn(`[github-skills] ${cfg.repo}: 获取 star 数失败，跳过热度展示 — ${message(error)}`)
+      cfg.noStarsLookup = true
+    }
+  }
+
   const cacheFile = cacheFilePath(opts.cacheDir, config.root, owner, name)
   const cached = readCache(cacheFile)
   const cachedFiles = cached?.files ?? {}
