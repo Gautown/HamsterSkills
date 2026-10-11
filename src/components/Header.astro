@@ -1,0 +1,60 @@
+---
+import { T, type Locale } from '../i18n/translations'
+
+interface Props {
+  lang: Locale
+}
+
+const { lang } = Astro.props
+const t = T[lang]
+const base = lang === 'en' ? '/en' : ''
+const pathname = Astro.url.pathname
+const altPath = lang === 'en' ? pathname.replace(/^\/en/, '') || '/' : `/en${pathname}`
+---
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href={base || '/'}>
+      <img class="brand-logo" src="/logo.svg" alt={t.siteName} width="48" height="48" />
+      <span>{t.siteName}</span>
+    </a>
+    <nav>
+      <a href={base || '/'}>{t.navSkills}</a>
+      <a href={`${base}/categories`}>{t.navCategories}</a>
+      <a href={`${base}/tags`}>{t.navTags}</a>
+      <button
+        class="theme-toggle"
+        type="button"
+        id="theme-toggle"
+        data-dark-label={t.themeDark}
+        data-light-label={t.themeLight}
+        aria-label="Toggle theme"
+      >
+        {t.themeDark}
+      </button>
+      <a class="lang-toggle" href={altPath}>{t.langSwitch}</a>
+    </nav>
+  </div>
+</header>
+
+<script>
+  const themeBtn = document.getElementById('theme-toggle')
+  if (themeBtn) {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const isDark = () => {
+      const o = document.documentElement.dataset.theme
+      if (o) return o === 'dark'
+      return mq.matches
+    }
+    const paint = () => {
+      themeBtn.textContent = isDark() ? themeBtn.dataset.darkLabel : themeBtn.dataset.lightLabel
+    }
+    themeBtn.addEventListener('click', () => {
+      const next = isDark() ? 'light' : 'dark'
+      document.documentElement.dataset.theme = next
+      localStorage.setItem('hamster:theme', next)
+      paint()
+    })
+    paint()
+  }
+</script>

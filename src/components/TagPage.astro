@@ -1,0 +1,38 @@
+---
+import type { CollectionEntry } from 'astro:content'
+import SkillCard from './SkillCard.astro'
+import { T, type Locale } from '../i18n/translations'
+
+interface Props {
+  locale: Locale
+  /** 归入当前页面的原始标签（第一个用于展示） */
+  tags: string[]
+  skills: CollectionEntry<'skills'>[]
+}
+
+const { locale, tags, skills } = Astro.props
+const t = T[locale]
+const base = locale === 'en' ? '/en' : ''
+const tag = tags[0]
+const tagSet = new Set(tags)
+const list = skills.filter(s => s.data.tags.some(item => tagSet.has(item)))
+---
+
+<div class="container">
+  <a class="crumb" href={`${base}/tags`}>&larr; {t.backTags}</a>
+  <p class="eyebrow">{t.tagsTitle}</p>
+  <div class="cat-head">
+    <h1>{tag}</h1>
+    <div class="cat-count-block">
+      <span class="count-big">{list.length}</span>
+      <span class="count-label">{t.skillsInCategory}</span>
+    </div>
+  </div>
+  {list.length > 0 ? (
+    <ul class="grid">
+      {list.map((entry, i) => <SkillCard entry={entry} lang={locale} rank={i + 1} />)}
+    </ul>
+  ) : (
+    <p class="empty">{t.categoryEmpty}</p>
+  )}
+</div>

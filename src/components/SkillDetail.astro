@@ -1,0 +1,350 @@
+---
+import type { CollectionEntry } from 'astro:content'
+import { renderSkillMarkdown } from '../lib/markdown'
+import { tagSlug } from '../lib/tags'
+import CopyPrompt from './CopyPrompt.astro'
+import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
+import { T, type Locale } from '../i18n/translations'
+
+interface Props {
+  locale: Locale
+  entry: CollectionEntry<'skills'>
+  skills: CollectionEntry<'skills'>[]
+}
+
+const { locale, entry, skills } = Astro.props
+const d = entry.data as {
+  title: string
+  titleEn: string
+  description: string
+  descriptionEn: string
+  category: CategoryKey
+  tags: string[]
+  github?: string
+  prompt?: string
+  author?: string
+  bestFor?: string
+  steps?: string[]
+  example?: string
+  evaluation?: string
+  guide?: string
+  grade?: 'S' | 'A' | 'B'
+  score?: number
+  likes?: number
+  ratingUp?: number
+  files?: string[]
+}
+const t = T[locale]
+const base = locale === 'en' ? '/en' : ''
+const title = locale === 'en' ? d.titleEn : d.title
+const desc = locale === 'en' ? d.descriptionEn : d.description
+const catName = CATEGORY_NAMES[locale][d.category]
+const sameCat = skills.filter(s => s.data.category === d.category && s.id !== entry.id)
+const related = (sameCat.length > 0 ? sameCat : skills.filter(s => s.id !== entry.id)).slice(0, 3)
+const md = renderSkillMarkdown
+const skillMdHtml = md(entry.body)
+const evaluationHtml = md(d.evaluation)
+const guideHtml = md(d.guide)
+const gradeLabel = d.grade ? (locale === 'zh' ? `${d.grade}${t.gradeSuffix}` : `Grade ${d.grade}`) : ''
+
+const fileGroups: { folder: string | null; items: string[] }[] = []
+for (const f of d.files ?? []) {
+  const parts = f.split('/')
+  const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : null
+  const name = parts[parts.length - 1]
+  let g = fileGroups.find(x => x.folder === folder)
+  if (!g) {
+    g = { folder, items: [] }
+    fileGroups.push(g)
+  }
+  g.items.push(name)
+}
+
+const skillMdText = [
+  '---',
+  `title: ${d.title}`,
+  `description: ${d.description}`,
+  `category: ${d.category}`,
+  `tags: [${d.tags.join(', ')}]`,
+  '---',
+  '',
+  (entry.body ?? '').trim(),
+  '',
+  d.prompt ? `## Prompt\n\n${d.prompt.trim()}` : '',
+]
+  .join('\n')
+  .trim()
+---
+
+<article class="container detail">
+  <a class="crumb" href={base || '/'}>&larr; {t.backAll}</a>
+  <div class="detail-grid">
+    <div class="detail-main">
+      <p class="eyebrow">{t.catsEyebrow}</p>
+      <h1>{title}</h1>
+      <div class="meta-row">
+        <span class="badge">{catName}</span>
+        {d.author && <span class="meta-item">by <strong>@{d.author}</strong></span>}
+        {d.tags.length > 0 && <span class="meta-item">{d.tags.length} {t.tagsLabel}</span>}
+      </div>
+      <p class="desc">{desc}</p>
+
+      <div class="tabs">
+        <div class="tab-bar" role="tablist">
+          <button class="tab active" type="button" data-tab="skillmd">SKILL.md</button>
+          {evaluationHtml && <button class="tab" type="button" data-tab="evaluation">{t.tabEvaluation}</button>}
+          {guideHtml && <button class="tab" type="button" data-tab="guide">{t.tabGuide}</button>}
+        </div>
+        <div class="tab-panel" data-tab="skillmd" role="tabpanel">
+          {skillMdHtml ? <div class="tab-content" set:html={skillMdHtml} /> : <p class="tab-empty">{t.tabEmpty}</p>}
+        </div>
+        {evaluationHtml && (
+          <div class="tab-panel" data-tab="evaluation" role="tabpanel" hidden>
+            <div class="tab-content" set:html={evaluationHtml} />
+          </div>
+        )}
+        {guideHtml && (
+          <div class="tab-panel" data-tab="guide" role="tabpanel" hidden>
+            <div class="tab-content" set:html={guideHtml} />
+          </div>
+        )}
+      </div>
+
+      {d.steps && d.steps.length > 0 && (
+        <div class="detail-section">
+          <p class="sec-label">{t.stepsLabel}</p>
+          <ol class="steps">
+            {d.steps.map((step, i) => (
+              <li class="step">
+                <span class="step-num">{i + 1}</span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {d.bestFor && (
+        <div class="detail-section">
+          <p class="sec-label">{t.bestForLabel}</p>
+          <p class="bestfor">{d.bestFor}</p>
+        </div>
+      )}
+
+      {d.prompt && (
+        <CopyPrompt prompt={d.prompt} label={t.copyPrompt} copyLabel={t.copy} copied={t.copied} note={t.promptNote} />
+      )}
+
+      {d.example && (
+        <div class="detail-section">
+          <p class="sec-label">{t.exampleLabel}</p>
+          <div class="example-terminal">
+            <div class="example-titlebar">
+              <span class="dot dot-r"></span>
+              <span class="dot dot-y"></span>
+              <span class="dot dot-g"></span>
+              <span class="example-file">output.md</span>
+            </div>
+            <pre>{d.example}</pre>
+          </div>
+        </div>
+      )}
+    </div>
+    <aside class="detail-side">
+      {(d.grade || d.score != null) && (
+        <div class="side-block">
+          <div class="score-row">
+            {d.grade && <span class="grade-badge">{gradeLabel}</span>}
+            {d.score != null && (
+              <div class="score-block">
+                <div class="score-num">{d.score}</div>
+                <div class="score-label">{t.aiScore}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      <div class="side-block">
+        <div class="btn-row">
+          {d.prompt && (
+            <button class="copy-btn side-btn2" type="button" data-label={t.copy} data-copied={t.copied}>
+              <span class="btn-eyebrow">{t.oneClick}</span>
+              <span class="btn-main">{t.copy}</span>
+            </button>
+          )}
+          <button class="export-btn side-btn2" type="button">
+            <span class="btn-eyebrow">.MD</span>
+            <span class="btn-main">{t.exportBtn}</span>
+          </button>
+        </div>
+        <button class="install-btn" type="button" data-label={t.installBtn} data-copied={t.copied}>
+          &gt;_ {t.installBtn}
+        </button>
+        {d.github && (
+          <a class="github-cta" href={d.github} target="_blank" rel="noopener">▶ {t.githubLabel} ↗</a>
+        )}
+      </div>
+      <div class="side-block">
+        <button class="like-btn" type="button" data-seed={d.likes ?? 0}>
+          <span class="heart">♡</span>
+          <span class="like-count">{d.likes ?? 0}</span>
+        </button>
+      </div>
+      <div class="side-block dashed">
+        <p class="side-label">{t.userRating}</p>
+        <div class="rating-row">
+          <button class="vote-btn up" type="button" data-seed={d.ratingUp ?? 0}>
+            <span class="up-count">{d.ratingUp ?? 0}</span> {t.voteUp}
+          </button>
+          <span class="rating-sep">|</span>
+          <button class="vote-btn down" type="button">
+            <span class="down-count">0</span> {t.voteDown}
+          </button>
+        </div>
+      </div>
+      {d.files && d.files.length > 0 && (
+        <div class="side-block">
+          <p class="side-label">{t.fileBrowse} <span class="file-total">{d.files.length}</span></p>
+          <div class="file-box">
+            {fileGroups.map(g => (
+              <div>
+                {g.folder && <div class="file-folder">{g.folder}/</div>}
+                {g.items.map(n => <div class={g.folder ? 'file-item nested' : 'file-item'}>{n}</div>)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div class="side-block">
+        <p class="side-label">{t.sideCategory}</p>
+        <div class="side-cat">{catName}</div>
+        <a class="cat-link" href={`${base}/categories/${d.category}`}>{t.backCategory} →</a>
+      </div>
+      {related.length > 0 && (
+        <div class="side-block">
+          <p class="side-label">{t.relatedLabel}</p>
+          <div class="related-list">
+            {related.map(r => (
+              <a class="related-item" href={`${base}/skills/${r.id}`}>
+                <span class="related-name">{locale === 'en' ? r.data.titleEn : r.data.title}</span>
+                <span class="related-cat">{CATEGORY_NAMES[locale][r.data.category as CategoryKey]}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+      {d.tags.length > 0 && (
+        <div class="side-block">
+          <p class="side-label">{t.tagsLabel}</p>
+          <div class="tags">{d.tags.map(tag => <a class="tag tag-link" href={`${base}/tags/${tagSlug(tag)}`}>{tag}</a>)}</div>
+        </div>
+      )}
+    </aside>
+  </div>
+</article>
+
+<script
+  type="application/json"
+  id="skill-md-text"
+  is:inline
+  set:html={JSON.stringify(skillMdText).replace(/</g, '\\u003c')}
+></script>
+
+<script>
+  const tabBtns = document.querySelectorAll<HTMLElement>('.tab')
+  const panels = document.querySelectorAll<HTMLElement>('.tab-panel')
+  tabBtns.forEach(btn =>
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.toggle('active', b === btn))
+      panels.forEach(p => {
+        p.hidden = p.dataset.tab !== btn.dataset.tab
+      })
+    })
+  )
+
+  const mdEl = document.getElementById('skill-md-text')
+  let mdText = ''
+  try {
+    mdText = mdEl ? JSON.parse(mdEl.textContent || '""') : ''
+  } catch {
+    mdText = ''
+  }
+
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      ta.remove()
+    }
+  }
+
+  const installBtn = document.querySelector<HTMLElement>('.install-btn')
+  installBtn?.addEventListener('click', async () => {
+    await copyText(mdText)
+    installBtn.textContent = installBtn.dataset.copied || 'Copied'
+    setTimeout(() => {
+      installBtn.textContent = installBtn.dataset.label || ''
+    }, 1600)
+  })
+
+  document.querySelector('.export-btn')?.addEventListener('click', () => {
+    const blob = new Blob([mdText], { type: 'text/markdown' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'SKILL.md'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  })
+
+  const likeBtn = document.querySelector<HTMLElement>('.like-btn')
+  if (likeBtn) {
+    const key = 'hamster:like:' + location.pathname
+    const seed = Number(likeBtn.dataset.seed || 0)
+    const countEl = likeBtn.querySelector('.like-count')
+    const heartEl = likeBtn.querySelector('.heart')
+    let liked = localStorage.getItem(key) === '1'
+    const paintLike = () => {
+      if (countEl) countEl.textContent = String(seed + (liked ? 1 : 0))
+      if (heartEl) heartEl.textContent = liked ? '♥' : '♡'
+      likeBtn.classList.toggle('liked', liked)
+    }
+    likeBtn.addEventListener('click', () => {
+      liked = !liked
+      localStorage.setItem(key, liked ? '1' : '0')
+      paintLike()
+    })
+    paintLike()
+  }
+
+  const upBtn = document.querySelector<HTMLElement>('.vote-btn.up')
+  const downBtn = document.querySelector<HTMLElement>('.vote-btn.down')
+  if (upBtn && downBtn) {
+    const key = 'hamster:vote:' + location.pathname
+    const upSeed = Number(upBtn.dataset.seed || 0)
+    let vote = localStorage.getItem(key) || ''
+    const paintVote = () => {
+      const upCount = upBtn.querySelector('.up-count')
+      const downCount = downBtn.querySelector('.down-count')
+      if (upCount) upCount.textContent = String(upSeed + (vote === 'up' ? 1 : 0))
+      if (downCount) downCount.textContent = String(vote === 'down' ? 1 : 0)
+      upBtn.classList.toggle('voted', vote === 'up')
+      downBtn.classList.toggle('voted', vote === 'down')
+    }
+    upBtn.addEventListener('click', () => {
+      vote = vote === 'up' ? '' : 'up'
+      vote ? localStorage.setItem(key, vote) : localStorage.removeItem(key)
+      paintVote()
+    })
+    downBtn.addEventListener('click', () => {
+      vote = vote === 'down' ? '' : 'down'
+      vote ? localStorage.setItem(key, vote) : localStorage.removeItem(key)
+      paintVote()
+    })
+    paintVote()
+  }
+</script>

@@ -1,0 +1,17 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import CategoryPage from '../../../components/CategoryPage.astro'
+import { CATEGORY_KEYS, CATEGORY_NAMES, type CategoryKey } from '../../../lib/categories'
+
+export function getStaticPaths() {
+  return CATEGORY_KEYS.map(category => ({ params: { category } }))
+}
+
+const skills = await getCollection('skills')
+const category = Astro.params.category as CategoryKey
+---
+
+<Layout lang="en" title={CATEGORY_NAMES.en[category]}>
+  <CategoryPage locale="en" category={category} skills={skills} />
+</Layout>

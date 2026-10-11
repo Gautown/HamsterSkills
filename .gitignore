@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-zh/
+dist-en/
+.astro/
+.cache/
+.wrangler/
+
+# 环境变量（可能含 GITHUB_TOKEN）
+.env
+.env.*
+!.env.example

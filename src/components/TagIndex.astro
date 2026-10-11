@@ -1,0 +1,51 @@
+---
+import type { CollectionEntry } from 'astro:content'
+import { T, type Locale } from '../i18n/translations'
+import { tagSlug } from '../lib/tags'
+
+interface Props {
+  locale: Locale
+  skills: CollectionEntry<'skills'>[]
+}
+
+const { locale, skills } = Astro.props
+const t = T[locale]
+const base = locale === 'en' ? '/en' : ''
+const tagCounts = new Map<string, { tag: string; count: number }>()
+for (const s of skills) {
+  for (const tag of s.data.tags) {
+    const slug = tagSlug(tag)
+    const current = tagCounts.get(slug)
+    if (current) current.count++
+    else tagCounts.set(slug, { tag, count: 1 })
+  }
+}
+const tags = [...tagCounts.entries()]
+  .map(([slug, info]) => ({ slug, ...info }))
+  .sort((a, b) => b.count - a.count)
+---
+
+<div class="container">
+  <p class="eyebrow">{t.catsEyebrow}</p>
+  <div class="cat-head">
+    <div>
+      <h1>{t.tagsTitle}</h1>
+      <p class="sub">{t.tagsSub}</p>
+    </div>
+    <div class="cat-count-block">
+      <span class="count-big">{tags.length}</span>
+      <span class="count-label">{t.tagsTitle}</span>
+    </div>
+  </div>
+  <ul class="grid">
+    {tags.map(({ slug, tag, count }) => (
+      <li class="cat-card">
+        <a href={`${base}/tags/${slug}`}>
+          <span class="cat-name">{tag}</span>
+          <span class="cat-count"><strong>{count}</strong> {t.skillsInCategory}</span>
+          <span class="cat-arrow">→</span>
+        </a>
+      </li>
+    ))}
+  </ul>
+</div>

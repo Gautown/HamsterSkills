@@ -1,0 +1,25 @@
+{
+  "name": "hamster-skills",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "split": "node scripts/split-assets.mjs",
+    "audit": "node scripts/audit.mjs",
+    "deploy:zh": "npx --yes wrangler@4 deploy -c wrangler.zh.jsonc",
+    "deploy:en": "npx --yes wrangler@4 deploy -c wrangler.en.jsonc"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
+    "astro": "^7.3.8",
+    "marked": "^18.0.12"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,64 @@
+---
+import type { CollectionEntry } from 'astro:content'
+import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
+import { T, type Locale } from '../i18n/translations'
+
+interface Props {
+  entry: CollectionEntry<'skills'>
+  lang: Locale
+  rank: number
+}
+
+const { entry, lang, rank } = Astro.props
+const d = entry.data as {
+  title: string
+  titleEn: string
+  description: string
+  descriptionEn: string
+  category: CategoryKey
+  tags: string[]
+  prompt?: string
+  github?: string
+  grade?: 'S' | 'A' | 'B'
+  score?: number
+  likes?: number
+}
+const t = T[lang]
+const base = lang === 'en' ? '/en' : ''
+const title = lang === 'en' ? d.titleEn : d.title
+const desc = lang === 'en' ? d.descriptionEn : d.description
+const searchBlob = [
+  d.title,
+  d.titleEn,
+  d.description,
+  d.descriptionEn,
+  d.tags.join(' '),
+  CATEGORY_NAMES.zh[d.category],
+  CATEGORY_NAMES.en[d.category],
+]
+  .join(' ')
+  .toLowerCase()
+---
+
+<li class="card" data-category={d.category} data-search={searchBlob} data-score={d.score ?? 0} data-likes={d.likes ?? 0}>
+  <a class="card-link" href={`${base}/skills/${entry.id}`}>
+    <div class="card-head">
+      <div class="card-rank">{String(rank).padStart(2, '0')}</div>
+      <div class="card-head-main">
+        {d.grade && <span class={`grade-mini g-${d.grade}`}>{d.grade}</span>}
+        {d.score != null && <span class="score-mini">{d.score}</span>}
+        {d.github && <span class="pill">{t.githubLabel}</span>}
+        {d.prompt && <span class="pill">{t.copyPrompt}</span>}
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>{title}</h3>
+      <p>{desc}</p>
+      {d.tags.length > 0 && <div class="tags">{d.tags.map(tag => <span class="tag">{tag}</span>)}</div>}
+    </div>
+    <div class="card-foot">
+      <span class="foot-cat">{CATEGORY_NAMES[lang][d.category]}</span>
+      <span class="foot-cat">{d.tags.length > 1 ? d.tags.slice(1, 3).join(' · ') : ''}</span>
+    </div>
+  </a>
+</li>

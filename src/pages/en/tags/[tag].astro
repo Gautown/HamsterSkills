@@ -1,0 +1,18 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import TagPage from '../../../components/TagPage.astro'
+import { buildTagPaths } from '../../../lib/tags'
+
+export async function getStaticPaths() {
+  const skills = await getCollection('skills')
+  return buildTagPaths(skills).map(({ slug, tags }) => ({ params: { tag: slug }, props: { tags } }))
+}
+
+const skills = await getCollection('skills')
+const { tags } = Astro.props as { tags: string[] }
+---
+
+<Layout lang="en" title={`#${tags[0]}`}>
+  <TagPage locale="en" tags={tags} skills={skills} />
+</Layout>

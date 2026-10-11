@@ -1,0 +1,44 @@
+---
+interface Props {
+  prompt: string
+  label: string
+  copyLabel: string
+  copied: string
+  note: string
+}
+
+const { prompt, label, copyLabel, copied, note } = Astro.props
+---
+
+<section class="prompt-box">
+  <div class="prompt-head">
+    <span>{label}</span>
+    <button class="copy-btn" type="button" data-label={copyLabel} data-copied={copied}>{copyLabel}</button>
+  </div>
+  <pre><code>{prompt}</code></pre>
+  <p class="note">{note}</p>
+</section>
+
+<script>
+  const pre = document.querySelector<HTMLElement>('.prompt-box pre')
+  for (const btn of document.querySelectorAll<HTMLElement>('.copy-btn')) {
+    btn.addEventListener('click', async () => {
+      const text = pre?.innerText || ''
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        ta.remove()
+      }
+      const labelEl = btn.querySelector('.btn-main') || btn
+      labelEl.textContent = btn.dataset.copied ?? 'Copied'
+      setTimeout(() => {
+        labelEl.textContent = btn.dataset.label ?? ''
+      }, 1600)
+    })
+  }
+</script>

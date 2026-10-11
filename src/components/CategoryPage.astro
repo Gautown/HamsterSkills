@@ -1,0 +1,66 @@
+---
+import type { CollectionEntry } from 'astro:content'
+import SkillCard from './SkillCard.astro'
+import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
+import { T, type Locale } from '../i18n/translations'
+
+interface Props {
+  locale: Locale
+  category: CategoryKey
+  skills: CollectionEntry<'skills'>[]
+}
+
+const { locale, category, skills } = Astro.props
+const t = T[locale]
+const base = locale === 'en' ? '/en' : ''
+const list = skills.filter(s => s.data.category === category)
+---
+
+<div class="container">
+  <a class="crumb" href={`${base}/categories`}>&larr; {t.backCategories}</a>
+  <p class="eyebrow">{t.catsEyebrow}</p>
+  <div class="cat-head">
+    <h1>{CATEGORY_NAMES[locale][category]}</h1>
+    <div class="cat-count-block">
+      <span class="count-big">{list.length}</span>
+      <span class="count-label">{t.skillsInCategory}</span>
+    </div>
+  </div>
+  {list.length > 0 && (
+    <div class="sort-row" style="margin: 4px 0 16px">
+      <span class="sort-label">{t.sortLabel}</span>
+      <button class="sort-btn active" type="button" data-sort="default">{t.sortDefault}</button>
+      <button class="sort-btn" type="button" data-sort="score">{t.sortScore}</button>
+      <button class="sort-btn" type="button" data-sort="likes">{t.sortLikes}</button>
+    </div>
+  )}
+  {list.length > 0 ? (
+    <ul class="grid">
+      {list.map((entry, i) => <SkillCard entry={entry} lang={locale} rank={i + 1} />)}
+    </ul>
+  ) : (
+    <p class="empty">{t.categoryEmpty}</p>
+  )}
+</div>
+
+<script>
+  const grid = document.querySelector<HTMLElement>('.grid')
+  const cards = Array.from(document.querySelectorAll<HTMLElement>('.grid .card'))
+  const sortBtns = Array.from(document.querySelectorAll<HTMLElement>('.sort-btn'))
+  const originalOrder = [...cards]
+  for (const btn of sortBtns) {
+    btn.addEventListener('click', () => {
+      sortBtns.forEach(b => b.classList.toggle('active', b === btn))
+      const mode = btn.dataset.sort
+      let ordered = [...cards]
+      if (mode === 'score') ordered.sort((a, b) => Number(b.dataset.score || 0) - Number(a.dataset.score || 0))
+      else if (mode === 'likes') ordered.sort((a, b) => Number(b.dataset.likes || 0) - Number(a.dataset.likes || 0))
+      else ordered = originalOrder
+      ordered.forEach((card, i) => {
+        grid?.appendChild(card)
+        const rankEl = card.querySelector('.card-rank')
+        if (rankEl) rankEl.textContent = String(i + 1).padStart(2, '0')
+      })
+    })
+  }
+</script>
