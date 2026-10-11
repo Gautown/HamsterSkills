@@ -42,6 +42,18 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: 校验部署所需 Secrets
+        run: |
+          missing=""
+          for v in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN SITE_URL; do
+            if [ -z "${!v}" ]; then missing="$missing $v"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::缺少必要的 Secrets：$missing（请在 Settings → Secrets 中配置）"
+            exit 1
+          fi
+          echo "SITE_URL=$SITE_URL"
+
       - name: 安装依赖
         run: npm ci
 
@@ -57,16 +69,16 @@ jobs:
         run: npm run build
 
       - name: 切分双站资产
-        run: node scripts/split-assets.mjs
+        run: npm run split
 
       - name: 聚合审计
-        run: node scripts/audit.mjs | tee refresh-audit.txt
+        run: npm run audit | tee refresh-audit.txt
 
       - name: 部署中文站 Worker
-        run: npx --yes wrangler@4 deploy -c wrangler.zh.jsonc
+        run: npm run deploy:zh
 
       - name: 部署英文站 Worker
-        run: npx --yes wrangler@4 deploy -c wrangler.en.jsonc
+        run: npm run deploy:en
 
       - name: 保存语料缓存
         if: always()

@@ -16,8 +16,10 @@
     // 每日 UTC 03:17（北京时间 11:17）；必须 ≥1 小时间隔才有 15 分钟 CPU 额度
     "crons": ["17 3 * * *"]
   },
+  // 部署前填入你的仓库标识（形如 <owner>/<repo>），Worker 用它触发本仓库的 Actions 工作流。
+  // 留空则定时刷新与手动刷新端点会返回「缺少 GITHUB_REPO」。
   "vars": {
-    "GITHUB_REPO": "Gautown/HamsterSkills"
+    "GITHUB_REPO": ""
   },
   "observability": {
     "enabled": true

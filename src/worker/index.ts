@@ -2,7 +2,7 @@
  * 中文站 Worker 入口：
  * - 静态资产由 assets binding 直接服务（run_worker_first 只放行 /api/*）
  * - Cron Trigger：每日触发 GitHub Actions 的 refresh 工作流（同步 GitHub → 构建 → 部署）
- * - POST /api/refresh：手动触发（需 Bearer REFRESH_SECRET）
+ * - POST /api/refresh：手动触发（需 Bearer REFRESH_SECRET，带频率限制）
  * - GET  /api/refresh-status：查询最近一次刷新工作流状态
  *
  * 所需 Secrets（wrangler secret put）：
@@ -29,6 +29,9 @@ interface CronEvent {
 
 const GITHUB_API = 'https://api.github.com'
 const WORKFLOW_FILE = 'refresh.yml'
+/** 手动触发频率限制：同一 IP 每 60 秒最多一次（isolate 内内存计数，best-effort） */
+const RATE_LIMIT_WINDOW_MS = 60_000
+const recentHits = new Map<string, number>()
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -73,10 +76,29 @@ async function refreshStatus(env: Env): Promise<Response> {
     : json({ runs: 0 })
 }
 
+/** 常量时间比较，避免通过响应耗时侧信道逐字节猜测密钥 */
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 function authorized(request: Request, env: Env): boolean {
   const secret = env.REFRESH_SECRET
   if (!secret) return false
-  return request.headers.get('Authorization') === `Bearer ${secret}`
+  return safeEqual(request.headers.get('Authorization') ?? '', `Bearer ${secret}`)
+}
+
+/** best-effort 频率限制：同一 IP 在窗口内只放行一次 */
+function rateLimited(request: Request): boolean {
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown'
+  const now = Date.now()
+  const last = recentHits.get(ip) ?? 0
+  if (now - last < RATE_LIMIT_WINDOW_MS) return true
+  recentHits.set(ip, now)
+  if (recentHits.size > 1000) recentHits.clear()
+  return false
 }
 
 export default {
@@ -85,6 +107,7 @@ export default {
     if (pathname === '/api/refresh') {
       if (request.method !== 'POST') return json({ error: '仅支持 POST' }, 405)
       if (!authorized(request, env)) return json({ error: '未授权' }, 401)
+      if (rateLimited(request)) return json({ error: '请求过于频繁，请 60 秒后重试' }, 429)
       return dispatchRefresh(env, 'manual')
     }
     if (pathname === '/api/refresh-status') return refreshStatus(env)
@@ -92,6 +115,18 @@ export default {
   },
 
   async scheduled(_event: CronEvent, env: Env, ctx: Ctx): Promise<void> {
-    ctx.waitUntil(dispatchRefresh(env, 'cron').then(() => undefined))
+    ctx.waitUntil(
+      dispatchRefresh(env, 'cron')
+        .then(async res => {
+          if (res.ok) {
+            console.log('[refresh] cron 已触发 GitHub Actions')
+          } else {
+            console.error(`[refresh] cron 触发失败 status=${res.status} body=${await res.clone().text()}`)
+          }
+        })
+        .catch(error => {
+          console.error('[refresh] cron 触发异常', error)
+        }),
+    )
   },
 }

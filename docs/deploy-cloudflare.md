@@ -37,9 +37,14 @@ Workers 免费版每个部署的**静态资产上限是 20,000 个文件**（付
 **Worker 端（wrangler secret put）**
 
 ```bash
-npx wrangler secret put GITHUB_TOKEN -c wrangler.zh.jsonc   # 触发 Actions 用的 PAT
+npx wrangler secret put GITHUB_TOKEN -c wrangler.zh.jsonc   # 触发 Actions 用的 PAT（需 workflow 权限）
 npx wrangler secret put REFRESH_SECRET -c wrangler.zh.jsonc  # 手动刷新端点密钥
 ```
+
+**Worker 端（vars，需在 `wrangler.zh.jsonc` 里填写）**
+
+`"vars": { "GITHUB_REPO": "<owner>/<repo>" }` —— 你的仓库标识，例如 `your-name/your-repo`。
+Worker 用它来触发本仓库的 Actions 工作流；留空时定时刷新与手动刷新端点都会返回「缺少 GITHUB_REPO」。
 
 ## 首次部署
 
