@@ -1,0 +1,17 @@
+{
+  // 英文站 Worker：纯静态资产（无 Worker 脚本，减少请求额度消耗）
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hamster-skills-en",
+  "compatibility_date": "2026-10-11",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./dist-en",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "observability": {
+    "enabled": true
+  }
+  // 绑定自定义域名（需与中文站同一 zone，路径限定 /en/*）
+  // "routes": [{ "pattern": "<你的域名>/en/*", "zone_name": "<你的域名>" }]
+}

@@ -1,0 +1,76 @@
+name: refresh-skills
+
+# 每日同步 GitHub 技能数据 → 构建 → 部署到 Cloudflare Workers（双站）
+# 触发方式：
+#   1. Cloudflare Worker Cron（主，见 wrangler.zh.jsonc）
+#   2. repository_dispatch: refresh-request（同上 Worker 手动端点 /api/refresh）
+#   3. schedule（兜底；GitHub 对公开仓库的定时任务可能延迟）
+#   4. workflow_dispatch（手动）
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [refresh-request]
+  schedule:
+    - cron: '23 3 * * *' # UTC 每日 03:23（北京时间 11:23）
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refresh-skills
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: 同步并部署
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Actions 自带令牌：api.github.com 1000 次/小时，足够 6 次搜索 + ≤300 次文件树
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SITE_URL: ${{ secrets.SITE_URL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 恢复语料缓存（增量同步的关键）
+        uses: actions/cache@v4
+        with:
+          path: .cache/skills-remote
+          key: skills-corpus-${{ github.run_id }}
+          restore-keys: |
+            skills-corpus-
+
+      - name: 构建（含 GitHub 同步）
+        run: npm run build
+
+      - name: 切分双站资产
+        run: node scripts/split-assets.mjs
+
+      - name: 聚合审计
+        run: node scripts/audit.mjs | tee refresh-audit.txt
+
+      - name: 部署中文站 Worker
+        run: npx --yes wrangler@4 deploy -c wrangler.zh.jsonc
+
+      - name: 部署英文站 Worker
+        run: npx --yes wrangler@4 deploy -c wrangler.en.jsonc
+
+      - name: 保存语料缓存
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/skills-remote
+          key: skills-corpus-${{ github.run_id }}

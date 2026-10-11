@@ -1,0 +1,27 @@
+{
+  // 中文站 Worker：静态资产 + Cron 定时刷新 + 手动刷新端点
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hamster-skills-zh",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-10-11",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./dist-zh",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    // 仅让 API 路径进入 Worker，其余请求由静态资产层直接响应（省免费版 10 万次/天请求额度）
+    "run_worker_first": ["/api/*"]
+  },
+  "triggers": {
+    // 每日 UTC 03:17（北京时间 11:17）；必须 ≥1 小时间隔才有 15 分钟 CPU 额度
+    "crons": ["17 3 * * *"]
+  },
+  "vars": {
+    "GITHUB_REPO": "Gautown/HamsterSkills"
+  },
+  "observability": {
+    "enabled": true
+  }
+  // 绑定自定义域名：把 <你的域名> 换成实际域名（需域名已在 Cloudflare 托管）
+  // "routes": [{ "pattern": "<你的域名>/*", "zone_name": "<你的域名>" }]
+}
