@@ -1,6 +1,6 @@
 ---
 import type { CollectionEntry } from 'astro:content'
-import { renderSkillMarkdown } from '../lib/markdown'
+import { isPlaceholderBody, renderSkillMarkdown, renderSkillBodyForDisplay } from '../lib/markdown'
 import { tagSlug } from '../lib/tags'
 import CopyPrompt from './CopyPrompt.astro'
 import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
@@ -46,6 +46,14 @@ const skillMdHtml = md(entry.body)
 const evaluationHtml = md(d.evaluation)
 const guideHtml = md(d.guide)
 const gradeLabel = d.grade ? (locale === 'zh' ? `${d.grade}${t.gradeSuffix}` : `Grade ${d.grade}`) : ''
+
+/*
+ * 正文显示用渲染：超长内容截断、HTML 规整。
+ * 注意「导出/安装/复制」仍使用完整原文（见下方 skillMdText），不受此处影响。
+ */
+const bodyView = renderSkillBodyForDisplay(entry.body)
+/** 正文是相对路径引用或占位符时，改用提示文案而不是渲染出无意义的路径 */
+const bodyIsPlaceholder = isPlaceholderBody(entry.body)
 
 const fileGroups: { folder: string | null; items: string[] }[] = []
 for (const f of d.files ?? []) {
@@ -96,7 +104,25 @@ const skillMdText = [
           {guideHtml && <button class="tab" type="button" data-tab="guide">{t.tabGuide}</button>}
         </div>
         <div class="tab-panel" data-tab="skillmd" role="tabpanel">
-          {skillMdHtml ? <div class="tab-content" set:html={skillMdHtml} /> : <p class="tab-empty">{t.tabEmpty}</p>}
+          {bodyIsPlaceholder ? (
+            <p class="tab-empty">{t.bodyPlaceholder}</p>
+          ) : bodyView.html ? (
+            <div class="tab-content" set:html={bodyView.html} />
+          ) : (
+            <p class="tab-empty">{t.tabEmpty}</p>
+          )}
+          {bodyView.truncated && (
+            <p class="tab-truncated">
+              {locale === 'en'
+                ? `This document is very long (${bodyView.fullLength.toLocaleString()} characters); only the first part is shown.`
+                : `本文档较长（${bodyView.fullLength.toLocaleString()} 字符），此处仅展示前一部分。`}
+              {d.github && (
+                <a href={d.github} target="_blank" rel="noopener">
+                  {locale === 'en' ? ' View the full version on GitHub ↗' : ' 在 GitHub 查看完整内容 ↗'}
+                </a>
+              )}
+            </p>
+          )}
         </div>
         {evaluationHtml && (
           <div class="tab-panel" data-tab="evaluation" role="tabpanel" hidden>

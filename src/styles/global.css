@@ -1299,6 +1299,28 @@ h2 {
   color: var(--muted);
   font-size: 13px;
   margin: 0;
+  padding: 14px 0;
+  line-height: 1.7;
+}
+
+/* 超长正文截断提示 */
+.tab-truncated {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.tab-truncated a {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+
+.tab-truncated a:hover {
+  text-decoration: underline;
 }
 
 .tab-content h1 {
@@ -1371,10 +1393,57 @@ h2 {
   margin: 0 0 10px;
 }
 
+/*
+ * 表格横向滚动容器。
+ * 实测 4,313 条正文含表格、3,104 条含 >300 字符的超长行（多为单元格内容），
+ * 表格本身较窄但单元格内容很长，没有这个容器会直接撑破详情页布局。
+ */
+.tab-content .table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.tab-content .table-scroll table {
+  margin: 0;
+  border: 0;
+}
+
 .tab-content th,
 .tab-content td {
   border: 1px solid var(--line);
   padding: 6px 10px;
+}
+
+/*
+ * 单元格与段落允许在任意位置断行。
+ * 远端正文里有大量无空格长串（URL、base64、命令行），默认的 break-word
+ * 不会在长串中间断开，会把容器横向撑开。
+ */
+.tab-content td,
+.tab-content th,
+.tab-content p,
+.tab-content li,
+.tab-content h1,
+.tab-content h2,
+.tab-content h3 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 代码块内部保持横向滚动即可，不要强制断行（会破坏代码可读性） */
+.tab-content pre code {
+  white-space: pre;
+}
+
+/* 图片与嵌入内容不得超出容器 */
+.tab-content img,
+.tab-content video,
+.tab-content iframe {
+  max-width: 100%;
+  height: auto;
 }
 
 .tab-content th {
