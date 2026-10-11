@@ -973,6 +973,36 @@ h2 {
   gap: 12px;
 }
 
+/* 仓库热度：评分/点赞区块无数据时，侧栏仍有真实可展示的指标 */
+.stars-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.stars-icon {
+  color: #f5a623;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.stars-num {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stars-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 无 prompt 时导出按钮独占整行，避免按钮组右侧留下空位 */
+.btn-row .side-btn2.full {
+  flex: 1 1 100%;
+}
+
 .grade-badge {
   background: #ffd52b;
   color: #1a1a1a;
@@ -1131,6 +1161,13 @@ h2 {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
+}
+
+/* 投票行现在位于数据区块内部，需与上方留出间距 */
+.side-block .rating-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
 }
 
 .rating-sep {

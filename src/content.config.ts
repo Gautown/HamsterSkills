@@ -153,6 +153,8 @@ const skills = defineCollection({
     score: z.number().optional(),
     likes: z.number().optional(),
     ratingUp: z.number().optional(),
+    /** 来源仓库 star 数（自动发现阶段已获取，零额外请求） */
+    stars: z.number().optional(),
     files: z.array(z.string()).optional(),
     added: z.string().optional(),
   }),

@@ -254,6 +254,8 @@ function parseSkill(raw, ctx) {
       tags: dedupe([...asStringArray(frontmatter.tags)]),
       github: dirSegment ? `https://github.com/${ctx.repo}/tree/${refSegment}/${dirSegment}` : `https://github.com/${ctx.repo}/tree/${refSegment}`,
       author: ctx.owner,
+      // 仓库热度：主题发现阶段随搜索结果一起带回，无需额外请求
+      ...(typeof ctx.stars === 'number' ? { stars: ctx.stars } : {}),
     },
   }
 }
@@ -452,6 +454,7 @@ async function syncRepo(target, aiCache) {
         ref,
         dir,
         dirName,
+        stars: target.stars,
         aiCategory: lookupAiCategory(aiCache, slugify(dirName) || slugify(name), file.sha),
       })
       nextFiles[file.path] = { sha: file.sha, frontmatter: parsed.frontmatter, body: parsed.body, data: parsed.data }
@@ -505,8 +508,13 @@ function resolveEntryData(entry, ctx) {
       ? parseSkill(buildSyntheticSource(entry.frontmatter), ctx).data
       : undefined
   if (!base) return undefined
-  if (!ctx.aiCategory) return base
-  return { ...base, category: ctx.aiCategory }
+  // 覆盖优先级：AI 分类 > 缓存里已有的值 > 规则层推导值。
+  // stars 必须在这里显式覆盖：绝大多数条目走的是「复用缓存里的 data」这条路径，
+  // 而历史缓存是在 stars 字段加入之前写入的，不覆盖就会一直是空的。
+  const override = {}
+  if (ctx.aiCategory) override.category = ctx.aiCategory
+  if (typeof ctx.stars === 'number') override.stars = ctx.stars
+  return Object.keys(override).length ? { ...base, ...override } : base
 }
 
 /** 用缓存里的 frontmatter 拼一段最小 Markdown，供 parseSkill 复用同一套映射逻辑 */
@@ -542,6 +550,7 @@ function mergeBySkillId(ordered, perRepoFiles, perRepoRefs, baseline, aiCache) {
         ref,
         dir,
         dirName,
+        stars: target.stars,
         aiCategory: lookupAiCategory(aiCache, id, entry.sha),
       })
       if (!data) continue

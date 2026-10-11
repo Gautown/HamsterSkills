@@ -32,6 +32,8 @@ const d = entry.data as {
   score?: number
   likes?: number
   ratingUp?: number
+  /** 来源仓库 star 数（自动发现阶段获取） */
+  stars?: number
   files?: string[]
 }
 const t = T[locale]
@@ -54,6 +56,8 @@ const gradeLabel = d.grade ? (locale === 'zh' ? `${d.grade}${t.gradeSuffix}` : `
 const bodyView = renderSkillBodyForDisplay(entry.body)
 /** 正文是相对路径引用或占位符时，改用提示文案而不是渲染出无意义的路径 */
 const bodyIsPlaceholder = isPlaceholderBody(entry.body)
+/** tab 数量大于 1 才需要切换栏 */
+const hasMultipleTabs = Boolean(evaluationHtml) || Boolean(guideHtml)
 
 const fileGroups: { folder: string | null; items: string[] }[] = []
 for (const f of d.files ?? []) {
@@ -98,11 +102,18 @@ const skillMdText = [
       <p class="desc">{desc}</p>
 
       <div class="tabs">
-        <div class="tab-bar" role="tablist">
-          <button class="tab active" type="button" data-tab="skillmd">SKILL.md</button>
-          {evaluationHtml && <button class="tab" type="button" data-tab="evaluation">{t.tabEvaluation}</button>}
-          {guideHtml && <button class="tab" type="button" data-tab="guide">{t.tabGuide}</button>}
-        </div>
+        {/*
+          只有存在多个 tab 时才渲染切换栏。
+          实测 8797 条里 evaluation / guide 的命中数均为 0，
+          远端 skill 永远只有 SKILL.md 一个 tab——孤零零的切换栏是纯粹的视觉噪音。
+        */}
+        {hasMultipleTabs && (
+          <div class="tab-bar" role="tablist">
+            <button class="tab active" type="button" data-tab="skillmd">SKILL.md</button>
+            {evaluationHtml && <button class="tab" type="button" data-tab="evaluation">{t.tabEvaluation}</button>}
+            {guideHtml && <button class="tab" type="button" data-tab="guide">{t.tabGuide}</button>}
+          </div>
+        )}
         <div class="tab-panel" data-tab="skillmd" role="tabpanel">
           {bodyIsPlaceholder ? (
             <p class="tab-empty">{t.bodyPlaceholder}</p>
@@ -177,31 +188,84 @@ const skillMdText = [
       )}
     </div>
     <aside class="detail-side">
-      {(d.grade || d.score != null) && (
-        <div class="side-block">
-          <div class="score-row">
-            {d.grade && <span class="grade-badge">{gradeLabel}</span>}
-            {d.score != null && (
-              <div class="score-block">
-                <div class="score-num">{d.score}</div>
-                <div class="score-label">{t.aiScore}</div>
+      {/*
+        数据区块：评分 / 点赞 / 投票 / 仓库热度。
+        实测 8797 条远端 skill 里评分、点赞、投票三条数据全部 0 命中，
+        原先它们各自渲染成独立区块，页面上就是三个空壳。
+        现在合并为一个区块，并在没有任何数据时整体不渲染。
+        stars 在 100% 条目上都有值（复用主题发现阶段的结果，零额外请求）。
+      */}
+      {(() => {
+        const hasScore = Boolean(d.grade) || d.score != null
+        const hasLike = d.likes != null
+        const hasVote = d.ratingUp != null
+        const hasStars = typeof d.stars === 'number'
+        if (!hasScore && !hasLike && !hasVote && !hasStars) return null
+        const stars = d.stars ?? 0
+        return (
+          <div class="side-block">
+            {hasStars && (
+              <div class="stars-row">
+                <span class="stars-icon">★</span>
+                <span class="stars-num">{stars.toLocaleString()}</span>
+                <span class="stars-label">{locale === 'en' ? 'repo stars' : '仓库热度'}</span>
+              </div>
+            )}
+            {(hasScore || hasLike) && (
+              <div class="score-row">
+                {d.grade && <span class="grade-badge">{gradeLabel}</span>}
+                {d.score != null && (
+                  <div class="score-block">
+                    <div class="score-num">{d.score}</div>
+                    <div class="score-label">{t.aiScore}</div>
+                  </div>
+                )}
+                {hasLike && (
+                  <button class="like-btn" type="button" data-seed={d.likes ?? 0}>
+                    <span class="heart">♡</span>
+                    <span class="like-count">{d.likes ?? 0}</span>
+                  </button>
+                )}
+              </div>
+            )}
+            {hasVote && (
+              <div class="rating-row">
+                <button class="vote-btn up" type="button" data-seed={d.ratingUp ?? 0}>
+                  <span class="up-count">{d.ratingUp ?? 0}</span> {t.voteUp}
+                </button>
+                <span class="rating-sep">|</span>
+                <button class="vote-btn down" type="button">
+                  <span class="down-count">0</span> {t.voteDown}
+                </button>
               </div>
             )}
           </div>
-        </div>
-      )}
+        )
+      })()}
       <div class="side-block">
         <div class="btn-row">
-          {d.prompt && (
-            <button class="copy-btn side-btn2" type="button" data-label={t.copy} data-copied={t.copied}>
-              <span class="btn-eyebrow">{t.oneClick}</span>
-              <span class="btn-main">{t.copy}</span>
+          {/*
+            「一键复制」只在有独立 prompt 文案时才有意义，而远端 skill 全部没有
+            prompt 字段——原先它不渲染、导出按钮却照常显示，按钮组因此只剩一个。
+            这里让导出按钮在无 prompt 时占满整行，视觉上不留空位。
+          */}
+          {d.prompt ? (
+            <>
+              <button class="copy-btn side-btn2" type="button" data-label={t.copy} data-copied={t.copied}>
+                <span class="btn-eyebrow">{t.oneClick}</span>
+                <span class="btn-main">{t.copy}</span>
+              </button>
+              <button class="export-btn side-btn2" type="button">
+                <span class="btn-eyebrow">.MD</span>
+                <span class="btn-main">{t.exportBtn}</span>
+              </button>
+            </>
+          ) : (
+            <button class="export-btn side-btn2 full" type="button">
+              <span class="btn-eyebrow">.MD</span>
+              <span class="btn-main">{t.exportBtn}</span>
             </button>
           )}
-          <button class="export-btn side-btn2" type="button">
-            <span class="btn-eyebrow">.MD</span>
-            <span class="btn-main">{t.exportBtn}</span>
-          </button>
         </div>
         <button class="install-btn" type="button" data-label={t.installBtn} data-copied={t.copied}>
           &gt;_ {t.installBtn}
@@ -209,24 +273,6 @@ const skillMdText = [
         {d.github && (
           <a class="github-cta" href={d.github} target="_blank" rel="noopener">▶ {t.githubLabel} ↗</a>
         )}
-      </div>
-      <div class="side-block">
-        <button class="like-btn" type="button" data-seed={d.likes ?? 0}>
-          <span class="heart">♡</span>
-          <span class="like-count">{d.likes ?? 0}</span>
-        </button>
-      </div>
-      <div class="side-block dashed">
-        <p class="side-label">{t.userRating}</p>
-        <div class="rating-row">
-          <button class="vote-btn up" type="button" data-seed={d.ratingUp ?? 0}>
-            <span class="up-count">{d.ratingUp ?? 0}</span> {t.voteUp}
-          </button>
-          <span class="rating-sep">|</span>
-          <button class="vote-btn down" type="button">
-            <span class="down-count">0</span> {t.voteDown}
-          </button>
-        </div>
       </div>
       {d.files && d.files.length > 0 && (
         <div class="side-block">

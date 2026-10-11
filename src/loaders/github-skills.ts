@@ -27,6 +27,8 @@ export interface RemoteRepo {
   skip?: string[]
   /** 仓库最新推送时间（自动发现提供）；与缓存一致时跳过全部网络请求 */
   pushedAt?: string
+  /** 仓库 star 数（自动发现提供，用于详情页展示热度，零额外请求） */
+  stars?: number
   /** 仓库级失败是否终止构建；显式配置默认 true，自动发现默认 false */
   strict?: boolean
   /** 单仓库 skill 数量上限（覆盖 perRepoMaxSkills） */
@@ -203,12 +205,21 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
       const explicit = options.repos.map(withDefaults)
 
       let queue: RemoteRepo[] = explicit
+      let discoveredStars: Map<string, number> | undefined
       if (options.discover?.enabled) {
         const discovered = await discoverRepos(options.discover, context, resolved)
+        discoveredStars = new Map(discovered.map(item => [item.repo.toLowerCase(), item.stars]))
         queue = [
           ...explicit,
           ...discovered.map(item =>
-            withDefaults({ repo: item.repo, branch: item.branch, pushedAt: item.pushedAt, strict: false }),
+            // stars 随发现结果一起带下来：搜索接口本来就会返回，无需额外请求
+            withDefaults({
+              repo: item.repo,
+              branch: item.branch,
+              pushedAt: item.pushedAt,
+              stars: item.stars,
+              strict: false,
+            }),
           ),
         ]
       }
@@ -221,6 +232,20 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
         if (seen.has(key)) continue
         seen.add(key)
         ordered.push(repo)
+      }
+
+      /*
+       * 显式配置的仓库优先入队，去重时「发现结果里的同一个仓库」会被丢掉，
+       * 连带丢掉它的 stars。回填一次：stars 只影响详情页热度展示，不影响其它配置，
+       * 显式指定的值仍然优先。
+       */
+      if (discoveredStars) {
+        for (const repo of ordered) {
+          if (repo.stars == null) {
+            const stars = discoveredStars.get(repo.repo.toLowerCase())
+            if (stars != null) repo.stars = stars
+          }
+        }
       }
 
       const totalCap = options.maxSkills ?? UNLIMITED
@@ -580,6 +605,8 @@ function mapSkillData(frontmatter: Record<string, unknown>, ctx: SkillContext): 
       ? `https://github.com/${ctx.repo}/tree/${refSegment}/${dirSegment}`
       : `https://github.com/${ctx.repo}/tree/${refSegment}`,
     author: ctx.owner,
+    // 仓库热度：发现阶段随搜索结果一起带回，无需额外请求
+    ...(typeof ctx.cfg.stars === 'number' ? { stars: ctx.cfg.stars } : {}),
   }
 }
 
