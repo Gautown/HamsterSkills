@@ -188,7 +188,11 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
       const aiCache: AiCacheFile = loadAiCache(resolveAiCachePath(context.config.root))
       const aiCached = Object.keys(aiCache.entries).length
       if (aiCached > 0) {
-        logger.info(`[github-skills] 已载入 AI 分类记忆：${aiCached} 条（记忆库命中时优先采用 AI 结果）`)
+        // 用 warn 级别而非 info：info 在部分命令（如 astro check）下不可见，
+        // 而「本次构建用了多少条 AI 分类」是排查分类异常时必须能看到的信息。
+        logger.warn(
+          `[github-skills] 已载入 AI 分类记忆 ${aiCached} 条（内容未变时优先采用 AI 结果；内容变更的条目仍走规则层）`,
+        )
       }
 
       const withDefaults = (repo: RemoteRepo): RemoteRepo => ({

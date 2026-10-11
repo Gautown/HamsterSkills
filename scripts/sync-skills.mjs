@@ -381,7 +381,7 @@ async function discoverRepos() {
 
 /* ------------------------------ 阶段 2：仓库同步 ------------------------------ */
 
-async function syncRepo(target) {
+async function syncRepo(target, aiCache) {
   const cacheFile = cacheFileFor(target.repo)
   const cached = readJson(cacheFile)
   const cachedFiles = (cached && cached.files) || {}
@@ -524,7 +524,7 @@ function buildSyntheticSource(frontmatter) {
  * 以 skill id 为唯一键合并：已有 id 覆盖内容，新 id 追加。
  * 覆盖顺序按 star 降序（高星优先占位），与站点现有 URL 体系保持一致。
  */
-function mergeBySkillId(ordered, perRepoFiles, perRepoRefs, baseline) {
+function mergeBySkillId(ordered, perRepoFiles, perRepoRefs, baseline, aiCache) {
   const merged = new Map()
   for (const target of ordered) {
     const files = perRepoFiles.get(target.repo)
@@ -608,7 +608,7 @@ async function main() {
   for (let i = 0; i < ordered.length; i++) {
     const target = ordered[i]
     try {
-      const result = await syncRepo(target)
+      const result = await syncRepo(target, aiCache)
       perRepoFiles.set(target.repo, result.files)
       perRepoRefs.set(target.repo, result.ref || target.branch || '')
       if (result.status === 'new' || result.status === 'changed') stats.changedRepos++
@@ -624,7 +624,7 @@ async function main() {
   // 3) 按 id 合并（baseline = 上次产出的 id 集合，用于区分「真正新增」与「首次建立基线」）
   const previousData = readJson(DATA_FILE)
   const baseline = new Set((previousData?.skills ?? []).map(s => String(s.id)))
-  const merged = mergeBySkillId(ordered, perRepoFiles, perRepoRefs, baseline)
+  const merged = mergeBySkillId(ordered, perRepoFiles, perRepoRefs, baseline, aiCache)
   let skills = [...merged.values()]
   if (skills.length > CONFIG.maxSkills) {
     warn(`合并结果 ${skills.length} 条超过总量上限 ${CONFIG.maxSkills}，按 star 顺序截断`)

@@ -31,6 +31,9 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SITE_URL: ${{ secrets.SITE_URL }}
+      AI_API_BASE: ${{ vars.AI_API_BASE || 'https://api.agnes-ai.cn/v1' }}
+      AI_API_KEY: ${{ secrets.AI_API_KEY }}
+      AI_MODEL: ${{ vars.AI_MODEL || 'agnes-3.0-flash' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -42,7 +45,9 @@ jobs:
       - name: 恢复语料缓存（增量同步的关键）
         uses: actions/cache@v4
         with:
-          path: .cache/skills-remote
+          path: |
+            .cache/skills-remote
+            .cache/ai-classify.json
           key: skills-corpus-${{ github.run_id }}
           restore-keys: |
             skills-corpus-
@@ -51,11 +56,17 @@ jobs:
         id: sync
         run: npm run sync | tee sync-output.txt
 
+      - name: AI 分类（记忆库命中的条目零成本，内容变更才重新调用）
+        run: npm run ai-classify | tee ai-output.txt
+        continue-on-error: true
+
       - name: 保存语料缓存
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: .cache/skills-remote
+          path: |
+            .cache/skills-remote
+            .cache/ai-classify.json
           key: skills-corpus-${{ github.run_id }}
 
       - name: 上传同步产物
