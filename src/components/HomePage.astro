@@ -25,7 +25,19 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
 <div class="container">
   <section class="hero">
     <p class="eyebrow">{t.heroEyebrow}</p>
-    <h1>{t.heroTitle}</h1>
+
+    {/*
+      标题与 CTA 同一行：标题占左侧剩余空间，两个按钮靠 hero 右边缘对齐。
+      窄屏（≤760px）下 cta-row 换行到标题下方，见 CSS。
+    */}
+    <div class="hero-head">
+      <h1>{t.heroTitle}</h1>
+      <div class="cta-row">
+        <a class="btn btn-filled" href="#skill-grid">{t.browseAll} →</a>
+        <a class="btn btn-outline" href={`${base}/categories`}>{t.viewCategories}</a>
+      </div>
+    </div>
+
     <p class="hero-sub">{t.heroSub}</p>
 
     <div class="stats">
@@ -63,11 +75,6 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
       <button class="sort-btn active" type="button" data-sort="default">{t.sortDefault}</button>
       <button class="sort-btn" type="button" data-sort="score">{t.sortScore}</button>
       <button class="sort-btn" type="button" data-sort="likes">{t.sortLikes}</button>
-    </div>
-
-    <div class="cta-row">
-      <a class="btn btn-filled" href="#skill-grid">{t.browseAll} →</a>
-      <a class="btn btn-outline" href={`${base}/categories`}>{t.viewCategories}</a>
     </div>
   </section>
 
