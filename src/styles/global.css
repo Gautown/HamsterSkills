@@ -420,10 +420,10 @@ h2 {
 }
 
 /*
- * 标题行：h1 在左，右侧一列放 CTA 与排序，整体贴 hero 右边缘。
+ * 标题行：h1 在左，两个 CTA 按钮在右。
  *
  * 列比例 3fr : 1fr 是刻意与 .stats 的 repeat(4, 1fr) 对齐——
- * 右侧列宽恰好等于一个 .stat 的宽度，两个 CTA 按钮因此与下方
+ * 右侧列宽恰好等于一个 .stat 的宽度，两个按钮因此与下方
  * 统计块里的每个格子严格等宽。统计块改列数时这里会自动跟随。
  */
 .hero-head {
@@ -438,17 +438,9 @@ h2 {
   margin: 0;
 }
 
-/* 右侧列：CTA 与排序纵向排列，整体作为一个 1fr 列 */
-.hero-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-}
-
 /*
  * 两个 CTA 按钮上下排列，各自撑满右侧列（= 一个 .stat 的宽度）。
- * width: 100% 而非固定值，这样统计块列数变化时无需同步改数字。
+ * width: 100% 而非固定值，统计块列数变化时无需同步改数字。
  */
 .hero-head .cta-row {
   margin-top: 0;
@@ -462,16 +454,9 @@ h2 {
   justify-content: center;
 }
 
-.hero-head .sort-row {
-  margin-top: 0;
-  flex-wrap: nowrap;
-}
-
 /*
- * 降级策略：
- *   ≤1100px  右侧 1fr 列已不足一个 .stat 的宽度（约 246px），
- *            CTA 按钮与标题换行，不再强行等宽
- *   ≤760px  进一步放开，标题独占一行
+ * ≤1100px 时右侧 1fr 列已不足一个 .stat 的宽度（约 246px），
+ * CTA 按钮换到标题下方，不再强行等宽。
  */
 @media (max-width: 1100px) {
   .hero-head {
@@ -487,16 +472,6 @@ h2 {
 
   .hero-head .cta-row .btn {
     width: auto;
-  }
-}
-
-@media (max-width: 760px) {
-  .hero-actions {
-    gap: 12px;
-  }
-
-  .hero-head .sort-row {
-    flex-wrap: wrap;
   }
 }
 
@@ -902,6 +877,21 @@ h2 {
   border-bottom: 1px solid var(--line);
   padding-bottom: 16px;
   margin: 48px 0 24px;
+  /* 右侧是操作控件（排序组 / 查看全部），窄屏时换到标题下方 */
+  flex-wrap: wrap;
+}
+
+/* 技能网格标题行里的排序组：靠右对齐，窄屏时独占一行左对齐 */
+.section-head .sort-row {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .section-head .sort-row {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .view-all {

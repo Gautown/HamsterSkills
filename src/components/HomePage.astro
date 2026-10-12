@@ -27,24 +27,14 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
     <p class="eyebrow">{t.heroEyebrow}</p>
 
     {/*
-      标题行：标题在左，CTA 按钮与排序组依次排在右侧，整体贴 hero 右边缘。
-      排序组原本在 hero 最底部，移到此处后与筛选操作相邻，
-      离它实际作用的技能网格更近。
-      窄屏（≤1100px 起逐级降级、≤760px 单列）见 CSS。
+      标题行：标题在左，两个 CTA 按钮在右，纵向排列且与 .stats 的每格等宽。
+      排序控件不在这里——它属于下面技能网格的 section-head。
     */}
     <div class="hero-head">
       <h1>{t.heroTitle}</h1>
-      <div class="hero-actions">
-        <div class="cta-row">
-          <a class="btn btn-filled" href="#skill-grid">{t.browseAll} →</a>
-          <a class="btn btn-outline" href={`${base}/categories`}>{t.viewCategories}</a>
-        </div>
-        <div class="sort-row">
-          <span class="sort-label">{t.sortLabel}</span>
-          <button class="sort-btn active" type="button" data-sort="default">{t.sortDefault}</button>
-          <button class="sort-btn" type="button" data-sort="score">{t.sortScore}</button>
-          <button class="sort-btn" type="button" data-sort="likes">{t.sortLikes}</button>
-        </div>
+      <div class="cta-row">
+        <a class="btn btn-filled" href="#skill-grid">{t.browseAll} →</a>
+        <a class="btn btn-outline" href={`${base}/categories`}>{t.viewCategories}</a>
       </div>
     </div>
 
@@ -86,6 +76,16 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
       <div>
         <p class="eyebrow">{t.gridEyebrow}</p>
         <h2>{t.gridTitle}</h2>
+      </div>
+      {/*
+        排序控件紧贴它实际作用的技能网格标题行，靠 section 右边缘对齐。
+        （此前被放在 hero 里，位置离技能网格太远。）
+      */}
+      <div class="sort-row">
+        <span class="sort-label">{t.sortLabel}</span>
+        <button class="sort-btn active" type="button" data-sort="default">{t.sortDefault}</button>
+        <button class="sort-btn" type="button" data-sort="score">{t.sortScore}</button>
+        <button class="sort-btn" type="button" data-sort="likes">{t.sortLikes}</button>
       </div>
     </div>
 
