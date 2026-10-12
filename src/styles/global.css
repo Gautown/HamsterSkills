@@ -803,72 +803,6 @@ h2 {
   text-underline-offset: 4px;
 }
 
-/* featured cards */
-.featured-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-.featured {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-4);
-  padding: 20px;
-  min-height: 200px;
-  text-decoration: none;
-  transition: box-shadow 0.2s, border-color 0.2s;
-}
-
-.featured:hover {
-  box-shadow: var(--shadow-16);
-  border-color: var(--line-strong);
-}
-
-.featured.r1 {
-  background: linear-gradient(180deg, var(--gold) 0%, var(--surface) 55%);
-}
-
-.featured-medal {
-  font-size: 22px;
-  margin-bottom: 8px;
-}
-
-.featured h3 {
-  margin: 0 0 6px;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.featured p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.featured-foot {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 /* skill cards — soft Fluent cards */
 .grid {
   list-style: none;
@@ -2010,10 +1944,6 @@ h2 {
 }
 
 @media (max-width: 900px) {
-  .featured-grid {
-    grid-template-columns: 1fr;
-  }
-
   /*
    * 窄屏导航：桌面端的两个下拉与右侧按钮全部让位给汉堡菜单。
    * 此前这里没有任何规则，导航项 + 48px logo 会在窄屏溢出。

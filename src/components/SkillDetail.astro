@@ -45,7 +45,6 @@ const catName = CATEGORY_NAMES[locale][d.category]
 const sameCat = skills.filter(s => s.data.category === d.category && s.id !== entry.id)
 const related = (sameCat.length > 0 ? sameCat : skills.filter(s => s.id !== entry.id)).slice(0, 3)
 const md = renderSkillMarkdown
-const skillMdHtml = md(entry.body)
 const evaluationHtml = md(d.evaluation)
 const guideHtml = md(d.guide)
 const gradeLabel = d.grade ? (locale === 'zh' ? `${d.grade}${t.gradeSuffix}` : `Grade ${d.grade}`) : ''
@@ -57,8 +56,6 @@ const gradeLabel = d.grade ? (locale === 'zh' ? `${d.grade}${t.gradeSuffix}` : `
 const bodyView = renderSkillBodyForDisplay(entry.body)
 /** 正文是相对路径引用或占位符时，改用提示文案而不是渲染出无意义的路径 */
 const bodyIsPlaceholder = isPlaceholderBody(entry.body)
-/** tab 数量大于 1 才需要切换栏（加入「讨论」后始终成立，保留此值供调试查看） */
-const tabCount = 1 + (evaluationHtml ? 1 : 0) + (guideHtml ? 1 : 0) + 1
 
 const fileGroups: { folder: string | null; items: string[] }[] = []
 for (const f of d.files ?? []) {

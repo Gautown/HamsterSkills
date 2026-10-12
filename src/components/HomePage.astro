@@ -1,7 +1,7 @@
 ---
 import type { CollectionEntry } from 'astro:content'
 import SkillCard from './SkillCard.astro'
-import { CATEGORY_KEYS, CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
+import { CATEGORY_KEYS, CATEGORY_NAMES } from '../lib/categories'
 import { T, type Locale } from '../i18n/translations'
 
 interface Props {
@@ -17,13 +17,6 @@ for (const key of CATEGORY_KEYS) {
   counts[key] = skills.filter(s => s.data.category === key).length
 }
 const tagCount = new Set(skills.flatMap(s => s.data.tags)).size
-const sRated = skills.filter(s => s.data.grade === 'S')
-const featured = [...sRated, ...skills.filter(s => s.data.grade !== 'S')].slice(0, 3)
-const newest = skills
-  .filter(s => s.data.added)
-  .sort((a, b) => (b.data.added > a.data.added ? 1 : -1))
-  .slice(0, 4)
-const medals = ['🥇', '🥈', '🥉']
 // 首页只内联前 N 张卡片，其余由「加载全部」按需 fetch JSON 客户端渲染（控制 HTML 体积）
 const GRID_PREVIEW = 150
 const previewSkills = skills.slice(0, GRID_PREVIEW)
@@ -78,75 +71,6 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
       <a class="btn btn-outline" href={`${base}/categories`}>{t.viewCategories}</a>
     </div>
   </section>
-
-  <section>
-    <div class="section-head">
-      <div>
-        <p class="eyebrow">{t.featuredEyebrow}</p>
-        <h2>{t.featuredLabel}</h2>
-      </div>
-      <a class="view-all" href="#skill-grid">{t.viewAll} →</a>
-    </div>
-    <div class="featured-grid">
-      {featured.map((entry, i) => {
-        const d = entry.data as {
-          title: string
-          titleEn: string
-          description: string
-          descriptionEn: string
-          category: CategoryKey
-          tags: string[]
-        }
-        const title = locale === 'en' ? d.titleEn : d.title
-        const desc = locale === 'en' ? d.descriptionEn : d.description
-        return (
-          <a class={`featured r${i + 1}`} href={`${base}/skills/${entry.id}`}>
-            <div class="featured-medal">{medals[i]}</div>
-            <h3>{title}</h3>
-            <p>{desc}</p>
-            <div class="featured-foot">
-              <span>{CATEGORY_NAMES[locale][d.category]}</span>
-              <span>{d.tags[0] ?? ''}</span>
-            </div>
-          </a>
-        )
-      })}
-    </div>
-  </section>
-
-  {newest.length > 0 && (
-    <section>
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">{t.recentEyebrow}</p>
-          <h2>{t.recentLabel}</h2>
-        </div>
-      </div>
-      <ul class="grid">
-        {newest.map(entry => {
-          const nd = entry.data as {
-            title: string
-            titleEn: string
-            category: CategoryKey
-            grade?: string
-            added?: string
-          }
-          const ntitle = locale === 'en' ? nd.titleEn : nd.title
-          return (
-            <li class="cat-card">
-              <a href={`${base}/skills/${entry.id}`}>
-                <span class="cat-name">{ntitle}</span>
-                <span class="cat-count">
-                  <strong>{nd.added}</strong>
-                  {nd.grade ? ` · ${nd.grade}` : ''} · {CATEGORY_NAMES[locale][nd.category]}
-                </span>
-              </a>
-            </li>
-          )
-        })}
-      </ul>
-    </section>
-  )}
 
   <section>
     <div class="section-head">

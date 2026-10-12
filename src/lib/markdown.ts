@@ -32,7 +32,7 @@ function htmlToPlainText(raw: string): string {
     // 未闭合的单个丢弃标签（如 <script src="...">）
     .replace(new RegExp(`<(${drop})\\b[^>]*>`, 'gi'), ' ')
   // 其余标签去标签留文字；块级标签前后补空格
-  text = text.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (match, tag: string) =>
+  text = text.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (_match, tag: string) =>
     BLOCK_TAGS.includes(tag.toLowerCase()) ? ' ' : '',
   )
   // 反转义实体，还原成可读字符
