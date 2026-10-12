@@ -65,14 +65,37 @@ const { categories, tags } = await navData()
 
 const isActive = (href: string) =>
   href === (base || '/') ? pathname === '/' || pathname === base || pathname === `${base}/` : pathname.startsWith(href)
+
+/** 首页地址：非首页页面提交搜索时跳转到这里，由 HomePage 读取 ?search= 过滤 */
+const homePath = base || '/'
+/** 已在首页时直接就地筛选，不必跳转 */
+const onHome = pathname === '/' || pathname === homePath || pathname === `${homePath}/`
+const currentQuery = Astro.url.searchParams.get('search') ?? ''
 ---
 
 <header class="site-header">
   <div class="container header-inner">
-    <a class="brand" href={base || '/'}>
+    <a class="brand" href={homePath}>
       <img class="brand-logo" src="/logo.svg" alt={t.siteName} width="48" height="48" />
       <span>{t.siteName}</span>
     </a>
+
+    {/*
+      全站搜索框：占据品牌与导航之间的剩余空间。
+      真正的筛选逻辑只在首页（依赖 #skill-grid），所以非首页提交时
+      跳转首页并带上 ?search= 参数，由 HomePage 读取后过滤。
+    */}
+    <form class="nav-search" id="nav-search" role="search" action={homePath} method="get">
+      <input
+        id="nav-search-input"
+        type="search"
+        name="search"
+        value={currentQuery}
+        placeholder={t.searchPlaceholder}
+        aria-label={t.searchPlaceholder}
+      />
+      <button class="nav-search-btn" type="submit" aria-label={t.searchBtn}>{t.searchBtn} →</button>
+    </form>
 
     <nav aria-label="主导航">
       <a class="nav-link" href={base || '/'} aria-current={isActive(base || '/') ? 'page' : undefined}>
@@ -146,7 +169,18 @@ const isActive = (href: string) =>
   {/* 窄屏展开面板：JS 控制显隐 */}
   <div class="nav-mobile" id="nav-mobile" hidden>
     <div class="container">
-      <a href={base || '/'} class:list={{ active: isActive(base || '/') }}>{t.navSkills}</a>
+      {/* 窄屏下导航栏搜索框隐藏，改由这里提供 */}
+      <form class="nav-search nav-search-mobile" id="nav-search-mobile" role="search" action={homePath} method="get">
+        <input
+          type="search"
+          name="search"
+          value={currentQuery}
+          placeholder={t.searchPlaceholder}
+          aria-label={t.searchPlaceholder}
+        />
+        <button class="nav-search-btn" type="submit" aria-label={t.searchBtn}>{t.searchBtn} →</button>
+      </form>
+      <a href={homePath} class:list={{ active: isActive(homePath) }}>{t.navSkills}</a>
       <a href={`${base}/categories`} class:list={{ active: pathname.startsWith(`${base}/categories`) }}>
         {t.navCategories}
       </a>
@@ -184,6 +218,58 @@ const isActive = (href: string) =>
     })
   }
   paintThemes()
+
+  /* ---------- 全站搜索 ---------- */
+  /*
+   * 已在首页时不跳转，直接派发 custom event 让 HomePage 就地过滤（避免整页重载）；
+   * 非首页则走 <form action> 正常跳转到首页并带上 ?search=。
+   */
+  const searchForm = document.getElementById('nav-search') as HTMLFormElement | null
+  const searchInput = document.getElementById('nav-search-input') as HTMLInputElement | null
+  const mobileInput = document.querySelector<HTMLInputElement>('.nav-search-mobile input')
+  const homePath = searchForm?.getAttribute('action') || '/'
+  const onHomePage = /^\/(en\/?)?$/.test(location.pathname)
+
+  /*
+   * 静态站点在构建期不知道用户会带什么查询参数，所以 value 只能在客户端回填。
+   * 同时同步汉堡面板里的那个输入框，两处始终一致。
+   */
+  const urlQuery = new URLSearchParams(location.search).get('search') ?? ''
+  if (urlQuery) {
+    if (searchInput) searchInput.value = urlQuery
+    if (mobileInput) mobileInput.value = urlQuery
+  }
+
+  if (searchForm && searchInput) {
+    searchForm.addEventListener('submit', e => {
+      if (!onHomePage) return // 跨页：交给浏览器默认提交
+      e.preventDefault()
+      const q = searchInput.value.trim()
+      // 同步到地址栏，便于分享/刷新后保留条件
+      const url = new URL(location.href)
+      if (q) url.searchParams.set('search', q)
+      else url.searchParams.delete('search')
+      history.replaceState(null, '', url)
+      if (mobileInput) mobileInput.value = q
+      window.dispatchEvent(new CustomEvent('hamster:search', { detail: q }))
+    })
+  }
+
+  // 汉堡面板里的表单同样按页面决定是否就地筛选
+  const mobileForm = document.getElementById('nav-search-mobile') as HTMLFormElement | null
+  if (mobileForm && mobileInput) {
+    mobileForm.addEventListener('submit', e => {
+      if (!onHomePage) return
+      e.preventDefault()
+      const q = mobileInput.value.trim()
+      const url = new URL(location.href)
+      if (q) url.searchParams.set('search', q)
+      else url.searchParams.delete('search')
+      history.replaceState(null, '', url)
+      if (searchInput) searchInput.value = q
+      window.dispatchEvent(new CustomEvent('hamster:search', { detail: q }))
+    })
+  }
 
   /* ---------- 下拉菜单：点外部 / Esc 关闭，且互斥 ---------- */
   const drops = Array.from(document.querySelectorAll<HTMLDetailsElement>('.nav-drop'))

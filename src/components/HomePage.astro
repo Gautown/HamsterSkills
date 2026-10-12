@@ -47,11 +47,10 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
       </div>
     </div>
 
-    <div class="search-form">
-      <input id="skill-search" type="search" placeholder={t.searchPlaceholder} />
-      <button class="search-btn" type="button">{t.searchBtn} →</button>
-    </div>
-
+    {/*
+      搜索框已移到导航栏（Header.astro），这里只保留「试试这些」快捷词。
+      快捷词会写回导航栏的输入框并触发同一套筛选。
+    */}
     <div class="try-links">
       <span class="label">{t.tryLabel}</span>
       {t.tryLinks.map((term: string) => (
@@ -168,7 +167,8 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
 
   const INDEX_URL = `${import.meta.env.BASE_URL}skills-index.json`
   const grid = document.getElementById('skill-grid')
-  const input = document.getElementById('skill-search') as HTMLInputElement | null
+  // 搜索输入框已移到导航栏（Header.astro），全站共用同一个元素
+  const input = (document.getElementById('nav-search-input') ?? document.getElementById('skill-search')) as HTMLInputElement | null
   const empty = document.getElementById('skill-empty')
   const more = document.getElementById('grid-more')
   const hint = more?.querySelector<HTMLElement>('.grid-hint') ?? null
@@ -244,8 +244,10 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
     }
   }
 
-  function ensureFull(): void {
-    if (!loaded) void loadAll()
+  function ensureFull(): Promise<void> {
+    // 已加载完成时返回 resolved promise，便于 .then() 链式使用
+    if (loaded) return Promise.resolve()
+    return loadAll()
   }
 
   function applyFilter(): void {
@@ -308,18 +310,37 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
     if (e.matches) closeSidebar()
   })
 
-  for (const tryBtn of document.querySelectorAll<HTMLElement>('.try-links button')) {
-    tryBtn.addEventListener('click', () => {
-      if (input) input.value = tryBtn.dataset.try || ''
-      ensureFull()
-      applyFilter()
-    })
+  /* ---------- 搜索联动 ---------- */
+  function runSearch(q: string) {
+    if (input) input.value = q
+    ensureFull()
+    applyFilter()
+    grid?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  document.querySelector('.search-btn')?.addEventListener('click', () => {
-    ensureFull()
-    grid?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // 「试试这些」快捷词：写回导航栏输入框并就地筛选
+  for (const tryBtn of document.querySelectorAll<HTMLElement>('.try-links button')) {
+    tryBtn.addEventListener('click', () => runSearch(tryBtn.dataset.try || ''))
+  }
+
+  // 导航栏搜索框在本页提交时派发的自定义事件（Header.astro 负责跨页跳转）
+  window.addEventListener('hamster:search', e => {
+    runSearch((e as CustomEvent<string>).detail ?? '')
   })
+
+  /*
+   * 支持带 ?search= 直接访问（从详情页/分类页搜索后跳转过来，
+   * 或分享链接、刷新页面）。Header 已把参数回填到输入框，这里补执行筛选。
+   */
+  const initialQuery = new URLSearchParams(location.search).get('search')?.trim() ?? ''
+  if (initialQuery) {
+    if (input) input.value = initialQuery
+    // 等按需加载的索引就绪后再筛选，否则只过滤了内联的 150 张
+    ensureFull().then(() => {
+      applyFilter()
+      grid?.scrollIntoView({ block: 'start' })
+    })
+  }
 
   loadBtn?.addEventListener('click', () => {
     if (loadState === 'error') loadState = 'idle'

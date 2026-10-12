@@ -144,6 +144,7 @@ h2 {
   font-weight: 600;
   font-size: 15px;
   letter-spacing: -0.01em;
+  flex-shrink: 0;
 }
 
 .brand-logo {
@@ -158,6 +159,7 @@ h2 {
   gap: 4px;
   font-size: 13px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 /* ---------- 「全部技能」下拉 ---------- */
@@ -345,6 +347,17 @@ h2 {
   gap: 2px;
 }
 
+/* 窄屏面板里的搜索框：占满整行，最大宽度限制取消 */
+.nav-search-mobile {
+  max-width: none;
+  margin-bottom: 8px;
+}
+
+.nav-search-mobile input {
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
 .nav-mobile a {
   display: block;
   padding: 10px 12px;
@@ -444,54 +457,65 @@ h2 {
   margin-top: 2px;
 }
 
-/* search box — Fluent textbox + accent button */
-.search-form {
+/* ---------- 导航栏搜索框 ---------- */
+/*
+ * 搜索框占据品牌与导航之间的剩余空间（flex:1），
+ * 窄屏下隐藏，由汉堡菜单里的入口承担（见下方 media 查询）。
+ */
+.nav-search {
   display: flex;
-  margin-top: 24px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 460px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
   overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.search-form:focus-within {
+.nav-search:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
-#skill-search {
+#nav-search-input {
   flex: 1;
   min-width: 0;
   border: 0;
   background: transparent;
   outline: none;
-  padding: 11px 14px;
-  font-size: 14px;
+  padding: 7px 12px;
+  font-size: 13px;
   font-family: inherit;
   color: var(--foreground);
 }
 
-#skill-search::placeholder {
+#nav-search-input::placeholder {
   color: var(--muted);
 }
 
-.search-btn {
+/* 隐藏浏览器自带的清除按钮，避免与自定义样式冲突 */
+#nav-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.nav-search-btn {
   border: 0;
   border-left: 1px solid var(--line);
   background: var(--accent);
   color: #fff;
-  padding: 0 20px;
-  font-size: 14px;
+  padding: 0 14px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  white-space: nowrap;
   transition: background 0.15s;
 }
 
-.search-btn:hover {
+.nav-search-btn:hover {
   background: var(--accent-hover);
 }
 
@@ -1989,6 +2013,37 @@ h2 {
 
   .site-header nav {
     gap: 8px;
+  }
+
+  /*
+   * 导航栏内的搜索框空间不足时（≤1180px）隐藏，
+   * 改由汉堡菜单里的搜索框承担。
+   * 注意汉堡按钮在 ≤900px 才出现，因此 901~1180px 区间
+   * 仍保留导航栏搜索框——它是该区间唯一的搜索入口。
+   */
+  .header-inner > .nav-search {
+    display: none;
+  }
+}
+
+/*
+ * 901~1180px：汉堡还没出现，但导航栏搜索框已隐藏，
+ * 这里的规则保证搜索框仍然可用——改为压缩而非移除。
+ */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .header-inner > .nav-search {
+    display: flex;
+    max-width: 240px;
+  }
+
+  #nav-search-input {
+    font-size: 12.5px;
+    padding: 6px 10px;
+  }
+
+  .nav-search-btn {
+    padding: 0 10px;
+    font-size: 12px;
   }
 }
 
