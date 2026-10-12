@@ -22,7 +22,8 @@
   },
   "observability": {
     "enabled": true
-  }
-  // 绑定自定义域名：把 <你的域名> 换成实际域名（需域名已在 Cloudflare 托管）
-  // "routes": [{ "pattern": "<你的域名>/*", "zone_name": "<你的域名>" }]
+  },
+  // 自定义域名：中文站占用根路径，英文站占用 /en/*（两者同 zone，互不重叠）
+  // 前提：skill.gautown.top 的 DNS 已托管在 Cloudflare
+  "routes": [{ "pattern": "skill.gautown.top/*", "zone_name": "skill.gautown.top" }]
 }

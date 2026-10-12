@@ -11,7 +11,8 @@
   },
   "observability": {
     "enabled": true
-  }
-  // 绑定自定义域名（需与中文站同一 zone，路径限定 /en/*）
-  // "routes": [{ "pattern": "<你的域名>/en/*", "zone_name": "<你的域名>" }]
+  },
+  // 自定义域名：英文站只占用 /en/*，根路径留给中文站
+  // 两者同 zone 且路径不重叠，Cloudflare 会按最精确匹配分派
+  "routes": [{ "pattern": "skill.gautown.top/en/*", "zone_name": "skill.gautown.top" }]
 }

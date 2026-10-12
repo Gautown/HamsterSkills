@@ -32,7 +32,7 @@ Workers 免费版每个部署的**静态资产上限是 20,000 个文件**（付
 | --- | --- |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账号 ID（Dashboard 右侧可见） |
 | `CLOUDFLARE_API_TOKEN` | 具备 Workers Scripts:Edit / Workers KV:Edit 权限的 API Token |
-| `SITE_URL` | 站点正式域名，如 `https://skills.example.com`（影响 sitemap/canonical/OG） |
+| `SITE_URL` | 站点正式域名，如 `https://skill.gautown.top`（影响 sitemap/canonical/OG） |
 
 **Worker 端（wrangler secret put）**
 
@@ -60,17 +60,23 @@ npx wrangler deploy -c wrangler.en.jsonc
 
 ## 绑定自定义域名
 
-两个 Worker 需要同一 zone 下的两条路由（**更具体的路径优先**）：
+两个 Worker 需要同一 zone 下的两条路由（**更具体的路径优先**）。本项目已配好：
 
 ```jsonc
-// wrangler.zh.jsonc
-"routes": [{ "pattern": "skills.example.com/*", "zone_name": "skills.example.com" }]
+// wrangler.zh.jsonc — 中文站占用根路径
+"routes": [{ "pattern": "skill.gautown.top/*", "zone_name": "skill.gautown.top" }]
 
-// wrangler.en.jsonc
-"routes": [{ "pattern": "skills.example.com/en/*", "zone_name": "skills.example.com" }]
+// wrangler.en.jsonc — 英文站只占用 /en/*
+"routes": [{ "pattern": "skill.gautown.top/en/*", "zone_name": "skill.gautown.top" }]
 ```
 
-绑好后设置 `SITE_URL=https://skills.example.com`（Actions Secret），重建一次即可让 sitemap/OG 使用正式域名。
+路由不重叠，Cloudflare 按最精确匹配分派：访问 `skill.gautown.top/skills/pdf` 走中文站，
+`skill.gautown.top/en/skills/pdf` 走英文站。
+
+**前提**：`skill.gautown.top` 的 DNS 已托管在 Cloudflare。若尚未托管，
+`wrangler deploy` 会因找不到 zone 而失败，需先在 Cloudflare 添加该域名。
+
+设置 `SITE_URL=https://skill.gautown.top`（Actions Secret），重建一次即可让 sitemap/OG 使用正式域名。
 
 ## 定时刷新怎么工作
 
