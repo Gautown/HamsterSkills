@@ -1,2 +1,6 @@
 User-agent: *
 Allow: /
+
+# 双站部署在同一域名下：中文站在根路径，英文站在 /en/*
+# （对应 wrangler.zh.jsonc 与 wrangler.en.jsonc 的两条 routes）
+Sitemap: https://skill.gautown.top/sitemap-index.xml
