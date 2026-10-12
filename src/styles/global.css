@@ -420,14 +420,15 @@ h2 {
 }
 
 /*
- * 标题行：h1 在左，CTA 按钮与排序组依次排在右侧，整体贴 hero 右边缘。
- * grid-template-columns: minmax(0,1fr) auto 让右侧区块按内容宽度收缩，
- * 由 justify-content 默认值把它们推到容器右边缘（与 hero 的 padding 对齐）。
- * align-items: end 让按钮底部与标题文字底部大致齐平，比 center 更稳。
+ * 标题行：h1 在左，右侧一列放 CTA 与排序，整体贴 hero 右边缘。
+ *
+ * 列比例 3fr : 1fr 是刻意与 .stats 的 repeat(4, 1fr) 对齐——
+ * 右侧列宽恰好等于一个 .stat 的宽度，两个 CTA 按钮因此与下方
+ * 统计块里的每个格子严格等宽。统计块改列数时这里会自动跟随。
  */
 .hero-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
   align-items: end;
   gap: 24px;
   margin-bottom: 16px;
@@ -437,17 +438,28 @@ h2 {
   margin: 0;
 }
 
-/* 右侧的「CTA + 排序」纵向并排、整体作为一个 auto 列 */
+/* 右侧列：CTA 与排序纵向排列，整体作为一个 1fr 列 */
 .hero-actions {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: nowrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
 }
 
+/*
+ * 两个 CTA 按钮上下排列，各自撑满右侧列（= 一个 .stat 的宽度）。
+ * width: 100% 而非固定值，这样统计块列数变化时无需同步改数字。
+ */
 .hero-head .cta-row {
   margin-top: 0;
-  flex-wrap: nowrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.hero-head .cta-row .btn {
+  width: 100%;
+  justify-content: center;
 }
 
 .hero-head .sort-row {
@@ -457,32 +469,32 @@ h2 {
 
 /*
  * 降级策略：
- *   ≤1100px 空间变紧，排序组换到 CTA 下方（仍靠右对齐）
- *   ≤760px  退回单列，标题独占一行，CTA 与排序依次向下堆叠
+ *   ≤1100px  右侧 1fr 列已不足一个 .stat 的宽度（约 246px），
+ *            CTA 按钮与标题换行，不再强行等宽
+ *   ≤760px  进一步放开，标题独占一行
  */
 @media (max-width: 1100px) {
-  .hero-actions {
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 12px;
-  }
-}
-
-@media (max-width: 760px) {
   .hero-head {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
 
-  .hero-actions {
+  .hero-head .cta-row {
     flex-direction: row;
     flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 12px 16px;
+    gap: 12px;
   }
 
-  .hero-head .cta-row,
+  .hero-head .cta-row .btn {
+    width: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .hero-actions {
+    gap: 12px;
+  }
+
   .hero-head .sort-row {
     flex-wrap: wrap;
   }
