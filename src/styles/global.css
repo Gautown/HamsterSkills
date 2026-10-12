@@ -157,6 +157,183 @@ h2 {
   display: flex;
   gap: 4px;
   font-size: 13px;
+  align-items: center;
+}
+
+/* ---------- 「全部技能」下拉 ---------- */
+/*
+ * 用 <details> 实现而非 JS 显隐：无需 JavaScript 即可展开，
+ * 键盘可达（summary 可 Tab 聚焦、Enter 触发），移动端行为一致。
+ */
+.nav-drop {
+  position: relative;
+}
+
+.nav-drop > summary {
+  list-style: none;
+}
+
+.nav-drop > summary::-webkit-details-marker {
+  display: none;
+}
+
+.nav-drop-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-drop-summary:hover {
+  background: var(--secondary);
+}
+
+.nav-drop-summary.active {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.nav-caret {
+  transition: transform 0.18s;
+  opacity: 0.7;
+}
+
+.nav-drop[open] .nav-caret {
+  transform: rotate(180deg);
+}
+
+.nav-drop-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 240px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 12%);
+  padding: 6px;
+  z-index: 60;
+  animation: navDropIn 0.14s ease-out;
+}
+
+@keyframes navDropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.nav-drop-menu a {
+  display: block;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--foreground);
+}
+
+.nav-drop-menu a:hover {
+  background: var(--secondary);
+}
+
+.nav-drop-menu a.active {
+  background: var(--accent-soft);
+}
+
+.nav-drop-label {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.nav-drop-label + .nav-drop-desc {
+  font-weight: 400;
+}
+
+.nav-drop-desc {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* ---------- 窄屏汉堡菜单 ---------- */
+.nav-burger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 38px;
+  height: 38px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.burger-bar {
+  display: block;
+  height: 1.5px;
+  width: 100%;
+  background: var(--foreground);
+  border-radius: 2px;
+  transition: transform 0.18s, opacity 0.18s;
+}
+
+.nav-burger.open .burger-bar:nth-child(1) {
+  transform: translateY(5.5px) rotate(45deg);
+}
+
+.nav-burger.open .burger-bar:nth-child(2) {
+  opacity: 0;
+}
+
+.nav-burger.open .burger-bar:nth-child(3) {
+  transform: translateY(-5.5px) rotate(-45deg);
+}
+
+.nav-mobile {
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding: 8px 0 14px;
+}
+
+.nav-mobile .container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-mobile a {
+  display: block;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--foreground);
+}
+
+.nav-mobile a:hover,
+.nav-mobile a.active {
+  background: var(--secondary);
+}
+
+.nav-mobile a.active .nav-drop-label {
+  color: var(--accent-text);
+}
+
+.nav-mobile-foot {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  align-items: center;
 }
 
 .site-header nav a {
@@ -318,27 +495,29 @@ h2 {
   text-decoration-color: var(--accent);
 }
 
-/* chips — Fluent toggle chips */
+/* chips — 分类筛选，桌面端在左侧栏内竖排 */
 .chips {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 24px;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--foreground);
   font-size: 13px;
   font-weight: 400;
-  padding: 7px 14px;
+  padding: 7px 10px;
   cursor: pointer;
   font-family: inherit;
+  text-align: left;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
@@ -356,6 +535,100 @@ h2 {
 .chip .count {
   font-size: 12px;
   opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ---------- 技能网格 + 左侧分类栏 ---------- */
+.grid-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .grid-layout {
+    grid-template-columns: 208px minmax(0, 1fr);
+    gap: 32px;
+  }
+
+  /* 滚动长列表时筛选栏始终可见 */
+  .filter-sidebar {
+    position: sticky;
+    top: 76px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+}
+
+.filter-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 10px;
+  padding-left: 10px;
+}
+
+.grid-main {
+  min-width: 0;
+}
+
+/* 窄屏折叠按钮：桌面端隐藏 */
+.chips-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.chips-caret {
+  margin-left: auto;
+  transition: transform 0.18s;
+  opacity: 0.7;
+}
+
+.chips-toggle[aria-expanded='true'] .chips-caret {
+  transform: rotate(180deg);
+}
+
+@media (min-width: 960px) {
+  .chips-toggle {
+    display: none;
+  }
+}
+
+/* 窄屏下侧栏默认折叠，点顶部按钮后展开 */
+@media (max-width: 959px) {
+  .filter-sidebar {
+    display: none;
+    margin-bottom: 16px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--secondary);
+  }
+
+  .filter-sidebar.open {
+    display: block;
+  }
+
+  .filter-title {
+    padding-left: 0;
+  }
 }
 
 /* sort row */
@@ -1704,6 +1977,24 @@ h2 {
 @media (max-width: 900px) {
   .featured-grid {
     grid-template-columns: 1fr;
+  }
+
+  /*
+   * 窄屏导航：桌面端的下拉与右侧两个按钮全部让位给汉堡菜单。
+   * 此前这里没有任何规则，5 个导航项 + 48px logo 会在窄屏溢出。
+   */
+  .nav-drop,
+  .site-header nav > .theme-toggle,
+  .site-header nav > .lang-toggle {
+    display: none;
+  }
+
+  .nav-burger {
+    display: flex;
+  }
+
+  .site-header nav {
+    gap: 8px;
   }
 }
 

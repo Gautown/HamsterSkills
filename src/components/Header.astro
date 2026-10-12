@@ -10,6 +10,15 @@ const t = T[lang]
 const base = lang === 'en' ? '/en' : ''
 const pathname = Astro.url.pathname
 const altPath = lang === 'en' ? pathname.replace(/^\/en/, '') || '/' : `/en${pathname}`
+
+/** 导航项：桌面端收进「所有技能」下拉，窄屏收进汉堡菜单 */
+const navLinks = [
+  { href: base || '/', label: t.navSkills, desc: t.navSkillsDesc },
+  { href: `${base}/categories`, label: t.navCategories, desc: t.navCategoriesDesc },
+  { href: `${base}/tags`, label: t.navTags, desc: t.navTagsDesc },
+]
+const isActive = (href: string) =>
+  href === (base || '/') ? pathname === '/' || pathname === base || pathname === `${base}/` : pathname.startsWith(href)
 ---
 
 <header class="site-header">
@@ -18,10 +27,29 @@ const altPath = lang === 'en' ? pathname.replace(/^\/en/, '') || '/' : `/en${pat
       <img class="brand-logo" src="/logo.svg" alt={t.siteName} width="48" height="48" />
       <span>{t.siteName}</span>
     </a>
-    <nav>
-      <a href={base || '/'}>{t.navSkills}</a>
-      <a href={`${base}/categories`}>{t.navCategories}</a>
-      <a href={`${base}/tags`}>{t.navTags}</a>
+
+    <nav aria-label="主导航">
+      {/*
+        桌面端：三个主链接收进「所有技能」下拉，减少导航宽度。
+        下拉用 <details> 实现，无需 JS 即可展开，移动端同样可用。
+      */}
+      <details class="nav-drop" id="nav-drop">
+        <summary class:list={['nav-drop-summary', { active: isActive(navLinks[0].href) }]}>
+          {t.navSkills}
+          <svg class="nav-caret" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+            <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" />
+          </svg>
+        </summary>
+        <div class="nav-drop-menu">
+          {navLinks.map(l => (
+            <a href={l.href} class:list={{ active: isActive(l.href) }}>
+              <span class="nav-drop-label">{l.label}</span>
+              <span class="nav-drop-desc">{l.desc}</span>
+            </a>
+          ))}
+        </div>
+      </details>
+
       <button
         class="theme-toggle"
         type="button"
@@ -33,28 +61,113 @@ const altPath = lang === 'en' ? pathname.replace(/^\/en/, '') || '/' : `/en${pat
         {t.themeDark}
       </button>
       <a class="lang-toggle" href={altPath}>{t.langSwitch}</a>
+
+      {/* 窄屏汉堡按钮：仅 ≤900px 显示 */}
+      <button
+        class="nav-burger"
+        type="button"
+        id="nav-burger"
+        aria-label={t.navMenu}
+        aria-expanded="false"
+        aria-controls="nav-mobile"
+      >
+        <span class="burger-bar" /><span class="burger-bar" /><span class="burger-bar" />
+      </button>
     </nav>
+  </div>
+
+  {/* 窄屏展开面板：JS 控制显隐，避免无 JS 时留下空白区域 */}
+  <div class="nav-mobile" id="nav-mobile" hidden>
+    <div class="container">
+      {navLinks.map(l => (
+        <a href={l.href} class:list={{ active: isActive(l.href) }}>
+          <span class="nav-drop-label">{l.label}</span>
+          <span class="nav-drop-desc">{l.desc}</span>
+        </a>
+      ))}
+      <div class="nav-mobile-foot">
+        <button
+          class="theme-toggle"
+          type="button"
+          data-theme-toggle
+          data-dark-label={t.themeDark}
+          data-light-label={t.themeLight}
+        >
+          {t.themeDark}
+        </button>
+        <a class="lang-toggle" href={altPath}>{t.langSwitch}</a>
+      </div>
+    </div>
   </div>
 </header>
 
 <script>
-  const themeBtn = document.getElementById('theme-toggle')
-  if (themeBtn) {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const isDark = () => {
-      const o = document.documentElement.dataset.theme
-      if (o) return o === 'dark'
-      return mq.matches
+  /* ---------- 主题切换 ---------- */
+  const mq = window.matchMedia('(prefers-color-scheme: dark)')
+  const isDark = () => {
+    const o = document.documentElement.dataset.theme
+    return o ? o === 'dark' : mq.matches
+  }
+  // 桌面与移动面板里各有一个主题按钮，两者需保持同步
+  const themeBtns = Array.from(document.querySelectorAll<HTMLElement>('[data-theme-toggle], #theme-toggle'))
+  const paintThemes = () => {
+    for (const b of themeBtns) {
+      b.textContent = isDark() ? b.dataset.darkLabel : b.dataset.lightLabel
     }
-    const paint = () => {
-      themeBtn.textContent = isDark() ? themeBtn.dataset.darkLabel : themeBtn.dataset.lightLabel
-    }
-    themeBtn.addEventListener('click', () => {
+  }
+  for (const btn of themeBtns) {
+    btn.addEventListener('click', () => {
       const next = isDark() ? 'light' : 'dark'
       document.documentElement.dataset.theme = next
       localStorage.setItem('hamster:theme', next)
-      paint()
+      paintThemes()
     })
-    paint()
+  }
+  paintThemes()
+
+  /* ---------- 下拉菜单：点击外部 / Esc 关闭 ---------- */
+  const drop = document.getElementById('nav-drop') as HTMLDetailsElement | null
+  if (drop) {
+    document.addEventListener('click', e => {
+      if (drop.open && !drop.contains(e.target as Node)) drop.open = false
+    })
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && drop.open) {
+        drop.open = false
+        ;(drop.querySelector('summary') as HTMLElement | null)?.focus()
+      }
+    })
+  }
+
+  /* ---------- 窄屏汉堡菜单 ---------- */
+  const burger = document.getElementById('nav-burger')
+  const mobile = document.getElementById('nav-mobile')
+  if (burger && mobile) {
+    burger.addEventListener('click', () => {
+      const open = mobile.hidden
+      mobile.hidden = !open
+      burger.setAttribute('aria-expanded', String(open))
+      burger.classList.toggle('open', open)
+    })
+    // Esc 关闭并把焦点还给汉堡按钮
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !mobile.hidden) {
+        mobile.hidden = true
+        burger.setAttribute('aria-expanded', 'false')
+        burger.classList.remove('open')
+        burger.focus()
+      }
+    })
+    // 视口放大到桌面尺寸时收起面板，避免残留
+    const mqWide = window.matchMedia('(min-width: 901px)')
+    const sync = () => {
+      if (mqWide.matches && !mobile.hidden) {
+        mobile.hidden = true
+        burger.setAttribute('aria-expanded', 'false')
+        burger.classList.remove('open')
+      }
+    }
+    mqWide.addEventListener('change', sync)
+    sync()
   }
 </script>

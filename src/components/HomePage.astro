@@ -66,17 +66,6 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
       ))}
     </div>
 
-    <div class="chips">
-      <button class="chip active" type="button" data-cat="all">
-        {t.all} <span class="count">{counts.all}</span>
-      </button>
-      {CATEGORY_KEYS.map(key => (
-        <button class="chip" type="button" data-cat={key}>
-          {CATEGORY_NAMES[locale][key]} <span class="count">{counts[key]}</span>
-        </button>
-      ))}
-    </div>
-
     <div class="sort-row">
       <span class="sort-label">{t.sortLabel}</span>
       <button class="sort-btn active" type="button" data-sort="default">{t.sortDefault}</button>
@@ -166,31 +155,64 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
         <h2>{t.gridTitle}</h2>
       </div>
     </div>
-    <ul
-      class="grid"
-      id="skill-grid"
-      data-i18n={JSON.stringify({
-        base,
-        locale,
-        githubLabel: t.githubLabel,
-        copyPrompt: t.copyPrompt,
-        loading: t.loadingAll,
-        failed: t.loadFailed,
-        catZh: CATEGORY_NAMES.zh,
-        catEn: CATEGORY_NAMES.en,
-      })}
-    >
-      {previewSkills.map((entry, i) => <SkillCard entry={entry} lang={locale} rank={i + 1} />)}
-    </ul>
-    {skills.length > GRID_PREVIEW && (
-      <div class="grid-more" id="grid-more">
-        <p class="grid-hint">
-          {t.gridLimited.replace('{shown}', String(previewSkills.length)).replace('{total}', String(skills.length))}
-        </p>
-        <button class="btn btn-outline" id="load-all" type="button">{t.loadAllBtn}</button>
+
+    {/*
+      分类筛选改为左侧栏：
+      - 桌面端（≥960px）与技能网格两列并排，筛选栏 sticky 跟随滚动
+      - 窄屏折叠为顶部一个「分类」按钮，点击展开（.chips-toggle）
+      按钮的 class 仍是 chip / chip.active，data-cat 不变，
+      因此下方按 .chip 查询与切换 active 的脚本无需改动。
+    */}
+    <button class="chips-toggle" type="button" id="chips-toggle" aria-expanded="false" aria-controls="filter-sidebar">
+      <span>{t.sidebarToggle}</span>
+      <svg class="chips-caret" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+        <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" />
+      </svg>
+    </button>
+
+    <div class="grid-layout">
+      <aside class="filter-sidebar" id="filter-sidebar">
+        <p class="filter-title">{t.sidebarTitle}</p>
+        <div class="chips">
+          <button class="chip active" type="button" data-cat="all">
+            {t.all} <span class="count">{counts.all}</span>
+          </button>
+          {CATEGORY_KEYS.map(key => (
+            <button class="chip" type="button" data-cat={key}>
+              {CATEGORY_NAMES[locale][key]} <span class="count">{counts[key]}</span>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <div class="grid-main">
+        <ul
+          class="grid"
+          id="skill-grid"
+          data-i18n={JSON.stringify({
+            base,
+            locale,
+            githubLabel: t.githubLabel,
+            copyPrompt: t.copyPrompt,
+            loading: t.loadingAll,
+            failed: t.loadFailed,
+            catZh: CATEGORY_NAMES.zh,
+            catEn: CATEGORY_NAMES.en,
+          })}
+        >
+          {previewSkills.map((entry, i) => <SkillCard entry={entry} lang={locale} rank={i + 1} />)}
+        </ul>
+        {skills.length > GRID_PREVIEW && (
+          <div class="grid-more" id="grid-more">
+            <p class="grid-hint">
+              {t.gridLimited.replace('{shown}', String(previewSkills.length)).replace('{total}', String(skills.length))}
+            </p>
+            <button class="btn btn-outline" id="load-all" type="button">{t.loadAllBtn}</button>
+          </div>
+        )}
+        <p id="skill-empty" class="empty hidden">{t.empty}</p>
       </div>
-    )}
-    <p id="skill-empty" class="empty hidden">{t.empty}</p>
+    </div>
   </section>
 </div>
 
@@ -334,8 +356,33 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
       chips.forEach(c => c.classList.toggle('active', c === chip))
       ensureFull()
       applyFilter()
+      // 窄屏下选完分类自动收起侧栏，把屏幕让给结果
+      if (window.matchMedia('(max-width: 959px)').matches) closeSidebar()
     })
   }
+
+  /* ---------- 窄屏侧栏折叠 ---------- */
+  const sidebar = document.getElementById('filter-sidebar')
+  const sidebarToggle = document.getElementById('chips-toggle')
+  function openSidebar() {
+    if (!sidebar) return
+    sidebar.classList.add('open')
+    sidebarToggle?.setAttribute('aria-expanded', 'true')
+  }
+  function closeSidebar() {
+    if (!sidebar) return
+    sidebar.classList.remove('open')
+    sidebarToggle?.setAttribute('aria-expanded', 'false')
+  }
+  sidebarToggle?.addEventListener('click', () => {
+    if (!sidebar) return
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar()
+  })
+  // 视口放大到桌面尺寸时，清掉窄屏的展开态，避免与桌面并排布局冲突
+  const mqSidebar = window.matchMedia('(min-width: 960px)')
+  mqSidebar.addEventListener('change', e => {
+    if (e.matches) closeSidebar()
+  })
 
   for (const tryBtn of document.querySelectorAll<HTMLElement>('.try-links button')) {
     tryBtn.addEventListener('click', () => {
