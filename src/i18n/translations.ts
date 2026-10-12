@@ -57,6 +57,7 @@ export const T = {
     relatedLabel: '相关技能',
     tabEvaluation: '测评详情',
     tabGuide: '使用指南',
+    tabDiscussion: '讨论',
     tabEmpty: '暂无内容',
     bodyPlaceholder: '该 skill 未提供独立说明文档，内容位于源仓库，请点击右侧「在 GitHub 查看」。',
     oneClick: 'ONE-CLICK',
@@ -134,6 +135,7 @@ export const T = {
     relatedLabel: 'Related skills',
     tabEvaluation: 'Evaluation',
     tabGuide: 'Usage guide',
+    tabDiscussion: 'Discussion',
     tabEmpty: 'No content yet',
     bodyPlaceholder:
       'This skill ships no standalone document — its content lives in the source repository. Use “View on GitHub”.',

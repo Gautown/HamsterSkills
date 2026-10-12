@@ -1,0 +1,121 @@
+---
+/**
+ * Giscus 评论组件（每个 skill 一个独立讨论）。
+ *
+ * 为什么懒加载：
+ *   站内详情页有 8,930 个（中英各一套，共 17,860），每个页面若直接引入
+ *   giscus 客户端脚本（约 50 KB）会显著拖慢首屏。这里改为「点开讨论 tab
+ *   时才注入脚本」，未点开的页面零开销。
+ *
+ * 为什么 strict：
+ *   strict=1 时 Giscus 只在配置域名下加载。本地 npm run dev / 预览环境
+ *   不产生评论，避免在 Discussions 里堆出一堆无意义的测试讨论。
+ *
+ * 讨论与页面的对应关系：mapping=specific + term=skill id。
+ *   选 specific 而非 pathname，是因为中英两个页面路径不同（/skills/x 与
+ *   /en/skills/x），用 pathname 会让同一个 skill 产生两个重复讨论；
+ *   用 skill id 则两页共享同一个讨论。
+ */
+interface Props {
+  /** skill 唯一标识，作为讨论的映射键（中英页面共享同一个讨论） */
+  term: string
+  /** 站点语言，Giscus 界面语言随之切换 */
+  locale: 'zh' | 'en'
+}
+
+const { term, locale } = Astro.props
+// Astro.site 来自 astro.config.mjs 的 site（构建时由 SITE_URL 环境变量注入）
+const origin = Astro.site?.origin ?? 'https://skill.gautown.top'
+---
+
+<div class="giscus-host" data-term={term} data-locale={locale} data-origin={origin} />
+
+<noscript>
+  <p class="giscus-fallback">
+    {locale === 'en'
+      ? 'Comments require JavaScript. Please open the discussion on GitHub.'
+      : '评论功能需要 JavaScript，请前往 GitHub 讨论区参与。'}
+    <a
+      href={`https://github.com/Gautown/HamsterSkills/discussions/new?category=general&title=${encodeURIComponent(term)}`}
+      target="_blank"
+      rel="noopener">{locale === 'en' ? 'Open on GitHub' : '在 GitHub 上讨论 ↗'}</a>
+  </p>
+</noscript>
+
+<style>
+  .giscus-host {
+    min-height: 120px;
+  }
+
+  .giscus-fallback {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.7;
+    margin: 0;
+    padding: 14px 0;
+  }
+
+  .giscus-fallback a {
+    color: var(--accent-text);
+  }
+
+  /* 骨架占位：脚本加载完成前给一个中性提示，避免页面看起来是空的 */
+  .giscus-loading {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 24px 0;
+    text-align: center;
+  }
+</style>
+
+<script>
+  /**
+   * Giscus 按需注入。
+   *
+   * 由详情页在首次切到「讨论」tab 时调用；同一页面重复调用不会重复注入。
+   */
+  function mountGiscus(host: HTMLElement) {
+    if (host.dataset.mounted === '1') return
+    host.dataset.mounted = '1'
+
+    const placeholder = document.createElement('div')
+    placeholder.className = 'giscus-loading'
+    placeholder.textContent = host.dataset.locale === 'en' ? 'Loading comments…' : '正在加载评论…'
+    host.appendChild(placeholder)
+
+    const script = document.createElement('script')
+    script.src = 'https://giscus.app/client.js'
+    script.async = true
+    script.crossOrigin = 'anonymous'
+    // 用 setAttribute 传值：Giscus 通过 data-* 读取配置
+    script.setAttribute('data-repo', 'Gautown/HamsterSkills')
+    script.setAttribute('data-repo-id', 'R_kgDOVEdjJA')
+    script.setAttribute('data-category', 'General')
+    script.setAttribute('data-category-id', 'DIC_kwDOVEdjJM4DH_Vd')
+    script.setAttribute('data-mapping', 'specific')
+    script.setAttribute('data-term', host.dataset.term ?? '')
+    // 仅在配置域名下加载；本地开发与预览环境不产生讨论
+    script.setAttribute('data-strict', '1')
+    script.setAttribute('data-reactions-enabled', '1')
+    script.setAttribute('data-emit-metadata', '0')
+    script.setAttribute('data-input-position', 'top')
+    script.setAttribute('data-theme', 'preferred_color_scheme')
+    script.setAttribute('data-lang', host.dataset.locale === 'en' ? 'en' : 'zh-CN')
+    script.setAttribute('data-loading', 'lazy')
+    script.addEventListener('load', () => placeholder.remove())
+    script.addEventListener('error', () => {
+      placeholder.textContent =
+        host.dataset.locale === 'en' ? 'Failed to load comments.' : '评论加载失败，请稍后重试。'
+    })
+    host.appendChild(script)
+  }
+
+  // 暴露给详情页的 tab 切换逻辑调用
+  ;(window as unknown as { mountGiscus?: (el: HTMLElement) => void }).mountGiscus = mountGiscus
+
+  // 首屏若已带 hash（#discussion）则直接挂载，支持链接直达
+  if (location.hash === '#discussion') {
+    const host = document.querySelector<HTMLElement>('.giscus-host')
+    if (host) mountGiscus(host)
+  }
+</script>

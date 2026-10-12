@@ -3,6 +3,7 @@ import type { CollectionEntry } from 'astro:content'
 import { isPlaceholderBody, renderSkillMarkdown, renderSkillBodyForDisplay } from '../lib/markdown'
 import { tagSlug } from '../lib/tags'
 import CopyPrompt from './CopyPrompt.astro'
+import GiscusComments from './GiscusComments.astro'
 import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
 import { T, type Locale } from '../i18n/translations'
 
@@ -56,8 +57,8 @@ const gradeLabel = d.grade ? (locale === 'zh' ? `${d.grade}${t.gradeSuffix}` : `
 const bodyView = renderSkillBodyForDisplay(entry.body)
 /** 正文是相对路径引用或占位符时，改用提示文案而不是渲染出无意义的路径 */
 const bodyIsPlaceholder = isPlaceholderBody(entry.body)
-/** tab 数量大于 1 才需要切换栏 */
-const hasMultipleTabs = Boolean(evaluationHtml) || Boolean(guideHtml)
+/** tab 数量大于 1 才需要切换栏（加入「讨论」后始终成立，保留此值供调试查看） */
+const tabCount = 1 + (evaluationHtml ? 1 : 0) + (guideHtml ? 1 : 0) + 1
 
 const fileGroups: { folder: string | null; items: string[] }[] = []
 for (const f of d.files ?? []) {
@@ -103,17 +104,18 @@ const skillMdText = [
 
       <div class="tabs">
         {/*
-          只有存在多个 tab 时才渲染切换栏。
-          实测 8797 条里 evaluation / guide 的命中数均为 0，
-          远端 skill 永远只有 SKILL.md 一个 tab——孤零零的切换栏是纯粹的视觉噪音。
+          切换栏在有多个 tab 时才渲染。
+          加入「讨论」tab 后，站内所有详情页都至少有两个 tab（SKILL.md + 讨论），
+          因此切换栏会始终存在——这与此前「单 tab 不渲染切换栏」的取舍不同，
+          但两个 tab 属于正常的分栏 UI，不是噪音。
+          evaluation / guide 仅本地精选 skill 有（实测远端 8797 条命中数为 0）。
         */}
-        {hasMultipleTabs && (
-          <div class="tab-bar" role="tablist">
-            <button class="tab active" type="button" data-tab="skillmd">SKILL.md</button>
-            {evaluationHtml && <button class="tab" type="button" data-tab="evaluation">{t.tabEvaluation}</button>}
-            {guideHtml && <button class="tab" type="button" data-tab="guide">{t.tabGuide}</button>}
-          </div>
-        )}
+        <div class="tab-bar" role="tablist">
+          <button class="tab active" type="button" data-tab="skillmd">SKILL.md</button>
+          {evaluationHtml && <button class="tab" type="button" data-tab="evaluation">{t.tabEvaluation}</button>}
+          {guideHtml && <button class="tab" type="button" data-tab="guide">{t.tabGuide}</button>}
+          <button class="tab" type="button" data-tab="discussion">{t.tabDiscussion}</button>
+        </div>
         <div class="tab-panel" data-tab="skillmd" role="tabpanel">
           {bodyIsPlaceholder ? (
             <p class="tab-empty">{t.bodyPlaceholder}</p>
@@ -145,6 +147,11 @@ const skillMdText = [
             <div class="tab-content" set:html={guideHtml} />
           </div>
         )}
+        <div class="tab-panel" data-tab="discussion" role="tabpanel" hidden>
+          <div class="tab-content discussion-panel">
+            <GiscusComments term={entry.id} locale={locale} />
+          </div>
+        </div>
       </div>
 
       {d.steps && d.steps.length > 0 && (
@@ -325,14 +332,25 @@ const skillMdText = [
 <script>
   const tabBtns = document.querySelectorAll<HTMLElement>('.tab')
   const panels = document.querySelectorAll<HTMLElement>('.tab-panel')
-  tabBtns.forEach(btn =>
-    btn.addEventListener('click', () => {
-      tabBtns.forEach(b => b.classList.toggle('active', b === btn))
-      panels.forEach(p => {
-        p.hidden = p.dataset.tab !== btn.dataset.tab
-      })
+  /** 切到「讨论」tab 时才注入 Giscus 脚本：站内 17860 个详情页不能每页都预加载 */
+  function activateTab(btn: HTMLElement) {
+    tabBtns.forEach(b => b.classList.toggle('active', b === btn))
+    panels.forEach(p => {
+      p.hidden = p.dataset.tab !== btn.dataset.tab
     })
-  )
+    if (btn.dataset.tab === 'discussion') {
+      const host = document.querySelector<HTMLElement>('.giscus-host')
+      const mount = (window as unknown as { mountGiscus?: (el: HTMLElement) => void }).mountGiscus
+      if (host && mount) mount(host)
+    }
+  }
+  tabBtns.forEach(btn => btn.addEventListener('click', () => activateTab(btn)))
+
+  // 支持 #discussion 深链：从站外直接打开讨论 tab
+  if (location.hash === '#discussion') {
+    const discussionBtn = document.querySelector<HTMLElement>('.tab[data-tab="discussion"]')
+    if (discussionBtn) activateTab(discussionBtn)
+  }
 
   const mdEl = document.getElementById('skill-md-text')
   let mdText = ''

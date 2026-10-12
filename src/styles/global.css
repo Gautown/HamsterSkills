@@ -1003,6 +1003,21 @@ h2 {
   flex: 1 1 100%;
 }
 
+/* 评论（Giscus）面板：去掉正文表格/代码块的样式继承，避免影响 Giscus 自身布局 */
+.tab-content.discussion-panel {
+  font-size: 14px;
+}
+
+.tab-content.discussion-panel table {
+  border: 0;
+}
+
+/* 代码块内的包裹层也会继承断行规则，这里恢复 Giscus 需要的原样显示 */
+.tab-content.discussion-panel pre {
+  background: transparent;
+  padding: 0;
+}
+
 .grade-badge {
   background: #ffd52b;
   color: #1a1a1a;
