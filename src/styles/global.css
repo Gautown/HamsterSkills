@@ -212,7 +212,9 @@ h2 {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  min-width: 240px;
+  min-width: 220px;
+  max-height: 70vh;
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -230,36 +232,69 @@ h2 {
 }
 
 .nav-drop-menu a {
-  display: block;
-  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
   border-radius: var(--radius-sm);
   text-decoration: none;
   color: var(--foreground);
+  font-size: 13.5px;
 }
 
 .nav-drop-menu a:hover {
   background: var(--secondary);
 }
 
-.nav-drop-menu a.active {
+.nav-drop-menu a[aria-current='page'] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* 「查看全部」固定在菜单顶部，与具体项区分 */
+.nav-drop-all {
+  font-weight: 600;
+  color: var(--accent-text);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  margin-bottom: 4px;
+  padding-bottom: 9px;
+}
+
+.nav-drop-all:hover {
   background: var(--accent-soft);
 }
 
 .nav-drop-label {
-  display: block;
-  font-size: 13.5px;
-  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.nav-drop-label + .nav-drop-desc {
-  font-weight: 400;
-}
-
-.nav-drop-desc {
-  display: block;
+.nav-drop-count {
   font-size: 12px;
   color: var(--muted);
-  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* 固定显示的普通导航链接（全部技能） */
+.site-header nav > .nav-link {
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.site-header nav > .nav-link:hover {
+  background: var(--secondary);
+}
+
+.site-header nav > .nav-link[aria-current='page'] {
+  color: var(--accent-text);
+  font-weight: 600;
 }
 
 /* ---------- 窄屏汉堡菜单 ---------- */
@@ -1980,8 +2015,8 @@ h2 {
   }
 
   /*
-   * 窄屏导航：桌面端的下拉与右侧两个按钮全部让位给汉堡菜单。
-   * 此前这里没有任何规则，5 个导航项 + 48px logo 会在窄屏溢出。
+   * 窄屏导航：桌面端的两个下拉与右侧按钮全部让位给汉堡菜单。
+   * 此前这里没有任何规则，导航项 + 48px logo 会在窄屏溢出。
    */
   .nav-drop,
   .site-header nav > .theme-toggle,

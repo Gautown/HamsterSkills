@@ -1,4 +1,17 @@
 ---
+/**
+ * 站点导航。
+ *
+ * 桌面端：全部技能 / 分类 / 标签 三个入口固定显示，后两者各带下拉
+ *   - 分类下拉：10 个固定分类，带技能数
+ *   - 标签下拉：热门标签（技能数 ≥ HOT_TAG_MIN），带技能数
+ *     实测 1217 个标签里有 864 个只出现 1 次，全部塞进菜单会不可用，
+ *     因此只放热门项并提供「查看全部」入口。
+ * 窄屏（≤900px）：三个入口 + 主题 + 语言收进汉堡面板
+ */
+import { getCollection } from 'astro:content'
+import { CATEGORY_KEYS, CATEGORY_NAMES } from '../lib/categories'
+import { tagSlug } from '../lib/tags'
 import { T, type Locale } from '../i18n/translations'
 
 interface Props {
@@ -11,12 +24,45 @@ const base = lang === 'en' ? '/en' : ''
 const pathname = Astro.url.pathname
 const altPath = lang === 'en' ? pathname.replace(/^\/en/, '') || '/' : `/en${pathname}`
 
-/** 导航项：桌面端收进「所有技能」下拉，窄屏收进汉堡菜单 */
-const navLinks = [
-  { href: base || '/', label: t.navSkills, desc: t.navSkillsDesc },
-  { href: `${base}/categories`, label: t.navCategories, desc: t.navCategoriesDesc },
-  { href: `${base}/tags`, label: t.navTags, desc: t.navTagsDesc },
-]
+/** 进入标签下拉的最小技能数；实测 ≥10 的标签共 16 个，菜单长度可控 */
+const HOT_TAG_MIN = 10
+
+/*
+ * 每个页面都重新聚合 8,900 条 skill 会拖慢构建，
+ * 因此把结果缓存到模块级变量（同一构建内多次调用只算一次）。
+ */
+let cachedCategories: { key: string; label: string; count: number }[] | undefined
+let cachedTags: { slug: string; tag: string; count: number }[] | undefined
+
+async function navData() {
+  if (cachedCategories && cachedTags) return { categories: cachedCategories, tags: cachedTags }
+  const skills = await getCollection('skills')
+
+  cachedCategories = CATEGORY_KEYS.map(key => ({
+    key,
+    label: CATEGORY_NAMES[lang][key],
+    count: skills.filter(s => s.data.category === key).length,
+  }))
+
+  const counts = new Map<string, { tag: string; count: number }>()
+  for (const s of skills) {
+    for (const tag of s.data.tags) {
+      const slug = tagSlug(tag)
+      const cur = counts.get(slug)
+      if (cur) cur.count++
+      else counts.set(slug, { tag, count: 1 })
+    }
+  }
+  cachedTags = [...counts.entries()]
+    .map(([slug, info]) => ({ slug, ...info }))
+    .filter(x => x.count >= HOT_TAG_MIN)
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+
+  return { categories: cachedCategories, tags: cachedTags }
+}
+
+const { categories, tags } = await navData()
+
 const isActive = (href: string) =>
   href === (base || '/') ? pathname === '/' || pathname === base || pathname === `${base}/` : pathname.startsWith(href)
 ---
@@ -29,22 +75,43 @@ const isActive = (href: string) =>
     </a>
 
     <nav aria-label="主导航">
-      {/*
-        桌面端：三个主链接收进「所有技能」下拉，减少导航宽度。
-        下拉用 <details> 实现，无需 JS 即可展开，移动端同样可用。
-      */}
-      <details class="nav-drop" id="nav-drop">
-        <summary class:list={['nav-drop-summary', { active: isActive(navLinks[0].href) }]}>
-          {t.navSkills}
+      <a class="nav-link" href={base || '/'} aria-current={isActive(base || '/') ? 'page' : undefined}>
+        {t.navSkills}
+      </a>
+
+      {/* 分类下拉：父链接可点，下拉列出 10 个分类 */}
+      <details class="nav-drop" id="nav-cat">
+        <summary class:list={['nav-drop-summary', { active: pathname.startsWith(`${base}/categories`) }]}>
+          {t.navCategories}
           <svg class="nav-caret" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
             <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" />
           </svg>
         </summary>
         <div class="nav-drop-menu">
-          {navLinks.map(l => (
-            <a href={l.href} class:list={{ active: isActive(l.href) }}>
-              <span class="nav-drop-label">{l.label}</span>
-              <span class="nav-drop-desc">{l.desc}</span>
+          <a href={`${base}/categories`} class="nav-drop-all">{t.navViewAllCategories} →</a>
+          {categories.map(c => (
+            <a href={`${base}/categories/${c.key}`}>
+              <span class="nav-drop-label">{c.label}</span>
+              <span class="nav-drop-count">{c.count.toLocaleString()}</span>
+            </a>
+          ))}
+        </div>
+      </details>
+
+      {/* 标签下拉：热门标签 + 查看全部 */}
+      <details class="nav-drop" id="nav-tag">
+        <summary class:list={['nav-drop-summary', { active: pathname.startsWith(`${base}/tags`) }]}>
+          {t.navTags}
+          <svg class="nav-caret" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+            <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" />
+          </svg>
+        </summary>
+        <div class="nav-drop-menu">
+          <a href={`${base}/tags`} class="nav-drop-all">{t.navViewAllTags} →</a>
+          {tags.map(tag => (
+            <a href={`${base}/tags/${tag.slug}`}>
+              <span class="nav-drop-label">{tag.tag}</span>
+              <span class="nav-drop-count">{tag.count.toLocaleString()}</span>
             </a>
           ))}
         </div>
@@ -53,7 +120,7 @@ const isActive = (href: string) =>
       <button
         class="theme-toggle"
         type="button"
-        id="theme-toggle"
+        data-theme-toggle
         data-dark-label={t.themeDark}
         data-light-label={t.themeLight}
         aria-label="Toggle theme"
@@ -76,23 +143,16 @@ const isActive = (href: string) =>
     </nav>
   </div>
 
-  {/* 窄屏展开面板：JS 控制显隐，避免无 JS 时留下空白区域 */}
+  {/* 窄屏展开面板：JS 控制显隐 */}
   <div class="nav-mobile" id="nav-mobile" hidden>
     <div class="container">
-      {navLinks.map(l => (
-        <a href={l.href} class:list={{ active: isActive(l.href) }}>
-          <span class="nav-drop-label">{l.label}</span>
-          <span class="nav-drop-desc">{l.desc}</span>
-        </a>
-      ))}
+      <a href={base || '/'} class:list={{ active: isActive(base || '/') }}>{t.navSkills}</a>
+      <a href={`${base}/categories`} class:list={{ active: pathname.startsWith(`${base}/categories`) }}>
+        {t.navCategories}
+      </a>
+      <a href={`${base}/tags`} class:list={{ active: pathname.startsWith(`${base}/tags`) }}>{t.navTags}</a>
       <div class="nav-mobile-foot">
-        <button
-          class="theme-toggle"
-          type="button"
-          data-theme-toggle
-          data-dark-label={t.themeDark}
-          data-light-label={t.themeLight}
-        >
+        <button class="theme-toggle" type="button" data-theme-toggle data-dark-label={t.themeDark} data-light-label={t.themeLight}>
           {t.themeDark}
         </button>
         <a class="lang-toggle" href={altPath}>{t.langSwitch}</a>
@@ -108,8 +168,8 @@ const isActive = (href: string) =>
     const o = document.documentElement.dataset.theme
     return o ? o === 'dark' : mq.matches
   }
-  // 桌面与移动面板里各有一个主题按钮，两者需保持同步
-  const themeBtns = Array.from(document.querySelectorAll<HTMLElement>('[data-theme-toggle], #theme-toggle'))
+  // 桌面与移动面板各有一个主题按钮，两者需同步
+  const themeBtns = Array.from(document.querySelectorAll<HTMLElement>('[data-theme-toggle]'))
   const paintThemes = () => {
     for (const b of themeBtns) {
       b.textContent = isDark() ? b.dataset.darkLabel : b.dataset.lightLabel
@@ -125,9 +185,13 @@ const isActive = (href: string) =>
   }
   paintThemes()
 
-  /* ---------- 下拉菜单：点击外部 / Esc 关闭 ---------- */
-  const drop = document.getElementById('nav-drop') as HTMLDetailsElement | null
-  if (drop) {
+  /* ---------- 下拉菜单：点外部 / Esc 关闭，且互斥 ---------- */
+  const drops = Array.from(document.querySelectorAll<HTMLDetailsElement>('.nav-drop'))
+  for (const drop of drops) {
+    drop.addEventListener('toggle', () => {
+      // 展开一个时收起其它，避免两个菜单同时挂着
+      if (drop.open) for (const other of drops) if (other !== drop) other.open = false
+    })
     document.addEventListener('click', e => {
       if (drop.open && !drop.contains(e.target as Node)) drop.open = false
     })
@@ -149,7 +213,6 @@ const isActive = (href: string) =>
       burger.setAttribute('aria-expanded', String(open))
       burger.classList.toggle('open', open)
     })
-    // Esc 关闭并把焦点还给汉堡按钮
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && !mobile.hidden) {
         mobile.hidden = true
