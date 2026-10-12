@@ -813,6 +813,35 @@ h2 {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 }
 
+/*
+ * 首页技能网格固定三列。
+ *
+ * 只作用于 #skill-grid，不改 .grid 本身——.grid 还被分类总页、分类页、
+ * 标签总页、标签页共用，那些页面的卡片是 cat-card，内容形态不同。
+ *
+ * 断点说明：容器 1200px − 侧栏 208px − 间距 32px = 960px 可用，
+ * 三列时每列约 300px。视口低于 1180px 时容器被 padding 压缩，
+ * 每列会不足 250px、描述频繁折行，故降为两列。
+ */
+@media (min-width: 1180px) {
+  #skill-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 700px) and (max-width: 1179px) {
+  #skill-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 700px 以下侧栏折叠为顶部按钮，此时宽度全部给网格，一行一个保证可读 */
+@media (max-width: 699px) {
+  #skill-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .card {
   border: 1px solid var(--line);
   border-radius: var(--radius);
