@@ -502,17 +502,24 @@ h2 {
 }
 
 .nav-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   border-left: 1px solid var(--line);
   background: var(--accent);
   color: #fff;
-  padding: 0 14px;
-  font-size: 13px;
-  font-weight: 600;
+  /* 只放图标，尺寸按图标而非文字排版 */
+  width: 38px;
+  flex-shrink: 0;
   cursor: pointer;
   font-family: inherit;
-  white-space: nowrap;
   transition: background 0.15s;
+}
+
+.nav-search-btn svg {
+  display: block;
+  pointer-events: none;
 }
 
 .nav-search-btn:hover {
@@ -2041,9 +2048,9 @@ h2 {
     padding: 6px 10px;
   }
 
+  /* 搜索按钮只有图标，仅在极窄区间略微收窄，避免挤压输入框 */
   .nav-search-btn {
-    padding: 0 10px;
-    font-size: 12px;
+    width: 34px;
   }
 }
 

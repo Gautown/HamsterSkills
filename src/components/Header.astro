@@ -94,7 +94,12 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
         placeholder={t.searchPlaceholder}
         aria-label={t.searchPlaceholder}
       />
-      <button class="nav-search-btn" type="submit" aria-label={t.searchBtn}>{t.searchBtn} →</button>
+      <button class="nav-search-btn" type="submit" aria-label={t.searchBtn} title={t.searchBtn}>
+        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6" fill="none" />
+          <path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+      </button>
     </form>
 
     <nav aria-label="主导航">
@@ -178,7 +183,12 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
           placeholder={t.searchPlaceholder}
           aria-label={t.searchPlaceholder}
         />
-        <button class="nav-search-btn" type="submit" aria-label={t.searchBtn}>{t.searchBtn} →</button>
+        <button class="nav-search-btn" type="submit" aria-label={t.searchBtn} title={t.searchBtn}>
+          <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6" fill="none" />
+            <path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+        </button>
       </form>
       <a href={homePath} class:list={{ active: isActive(homePath) }}>{t.navSkills}</a>
       <a href={`${base}/categories`} class:list={{ active: pathname.startsWith(`${base}/categories`) }}>
