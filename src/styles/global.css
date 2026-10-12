@@ -75,14 +75,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * 站点容器。
+ *
+ * 1440px 的取舍：容器内边距 16px，实际内容宽 1408px。
+ * 首页技能网格还要扣掉侧栏 208px 与列间距 32px，网格可用 1168px，
+ * 三列时每列 378px——比原先 1200px 容器下的 300px 宽松不少，
+ * 卡片里的标题与描述不再频繁折行。
+ *
+ * .container.narrow 此前无任何引用（内容页都用标准容器），已移除。
+ */
 .container {
-  max-width: 1200px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 0 16px;
-}
-
-.container.narrow {
-  max-width: 800px;
 }
 
 main {
@@ -501,7 +507,8 @@ h2 {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 460px;
+  /* 容器 1440px 时两侧还有余量，放宽上限让搜索框更舒展 */
+  max-width: 560px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -885,17 +892,19 @@ h2 {
  * 只作用于 #skill-grid，不改 .grid 本身——.grid 还被分类总页、分类页、
  * 标签总页、标签页共用，那些页面的卡片是 cat-card，内容形态不同。
  *
- * 断点说明：容器 1200px − 侧栏 208px − 间距 32px = 960px 可用，
- * 三列时每列约 300px。视口低于 1180px 时容器被 padding 压缩，
- * 每列会不足 250px、描述频繁折行，故降为两列。
+ * 断点按容器 1440px 重算：
+ *   满宽时 1408 − 侧栏 208 − 间距 32 = 1168px 可用，三列每列 379px。
+ *   视口收窄时容器跟随视口，要维持「每列 ≥300px」需
+ *   视口 ≥ 300×3 + 列间距 32 + 侧栏 208 + 容器内边距 32
+ *   = 1212px（视口 1200 时每列仅 299px，差 1px 不达标），故断点取 1210px。
  */
-@media (min-width: 1180px) {
+@media (min-width: 1210px) {
   #skill-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 700px) and (max-width: 1179px) {
+@media (min-width: 700px) and (max-width: 1209px) {
   #skill-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2069,13 +2078,14 @@ h2 {
 }
 
 /*
- * 901~1180px：汉堡还没出现，但导航栏搜索框已隐藏，
- * 这里的规则保证搜索框仍然可用——改为压缩而非移除。
+ * 901~1210px：汉堡还没出现（≤900px 才出现），但导航栏宽度已不足以
+ * 容纳完整搜索框。这段规则保证搜索框仍然可用——压缩而非移除。
+ * 上限随容器放宽到 560px 后，压缩区间可从 240px 提到 280px。
  */
-@media (min-width: 901px) and (max-width: 1180px) {
+@media (min-width: 901px) and (max-width: 1210px) {
   .header-inner > .nav-search {
     display: flex;
-    max-width: 240px;
+    max-width: 280px;
   }
 
   #nav-search-input {
