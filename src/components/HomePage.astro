@@ -27,14 +27,24 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
     <p class="eyebrow">{t.heroEyebrow}</p>
 
     {/*
-      标题与 CTA 同一行：标题占左侧剩余空间，两个按钮靠 hero 右边缘对齐。
-      窄屏（≤760px）下 cta-row 换行到标题下方，见 CSS。
+      标题行：标题在左，CTA 按钮与排序组依次排在右侧，整体贴 hero 右边缘。
+      排序组原本在 hero 最底部，移到此处后与筛选操作相邻，
+      离它实际作用的技能网格更近。
+      窄屏（≤1100px 起逐级降级、≤760px 单列）见 CSS。
     */}
     <div class="hero-head">
       <h1>{t.heroTitle}</h1>
-      <div class="cta-row">
-        <a class="btn btn-filled" href="#skill-grid">{t.browseAll} →</a>
-        <a class="btn btn-outline" href={`${base}/categories`}>{t.viewCategories}</a>
+      <div class="hero-actions">
+        <div class="cta-row">
+          <a class="btn btn-filled" href="#skill-grid">{t.browseAll} →</a>
+          <a class="btn btn-outline" href={`${base}/categories`}>{t.viewCategories}</a>
+        </div>
+        <div class="sort-row">
+          <span class="sort-label">{t.sortLabel}</span>
+          <button class="sort-btn active" type="button" data-sort="default">{t.sortDefault}</button>
+          <button class="sort-btn" type="button" data-sort="score">{t.sortScore}</button>
+          <button class="sort-btn" type="button" data-sort="likes">{t.sortLikes}</button>
+        </div>
       </div>
     </div>
 
@@ -68,13 +78,6 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
       {t.tryLinks.map((term: string) => (
         <button type="button" data-try={term}>{term}</button>
       ))}
-    </div>
-
-    <div class="sort-row">
-      <span class="sort-label">{t.sortLabel}</span>
-      <button class="sort-btn active" type="button" data-sort="default">{t.sortDefault}</button>
-      <button class="sort-btn" type="button" data-sort="score">{t.sortScore}</button>
-      <button class="sort-btn" type="button" data-sort="likes">{t.sortLikes}</button>
     </div>
   </section>
 
