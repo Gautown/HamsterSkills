@@ -14,6 +14,11 @@ const [entry] = skills.filter(s => s.id === slug)
 if (!entry) return
 ---
 
-<Layout lang="en" title={entry.data.titleEn}>
+<Layout
+  lang="en"
+  title={entry.data.titleEn}
+  description={entry.data.descriptionEn}
+  path={`/en/skills/${entry.id}/`}
+>
   <SkillDetail locale="en" entry={entry} skills={skills} />
 </Layout>

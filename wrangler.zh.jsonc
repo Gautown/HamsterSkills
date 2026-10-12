@@ -24,6 +24,7 @@
     "enabled": true
   },
   // 自定义域名：中文站占用根路径，英文站占用 /en/*（两者同 zone，互不重叠）
-  // 前提：skill.gautown.top 的 DNS 已托管在 Cloudflare
-  "routes": [{ "pattern": "skill.gautown.top/*", "zone_name": "skill.gautown.top" }]
+  // zone_name 填域名所属的 zone（skill.gautown.top 是子域名，zone 是 gautown.top）
+  // pattern 才是完整的自定义域名
+  "routes": [{ "pattern": "skill.gautown.top/*", "zone_name": "gautown.top" }]
 }

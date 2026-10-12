@@ -7,10 +7,26 @@ import { T, type Locale } from '../i18n/translations'
 interface Props {
   lang: Locale
   title?: string
+  /** 页面描述；详情页传 skill 自身的描述 */
+  description?: string
+  /** 该页面的站点内路径（如 /skills/pdf），用于拼 canonical 与 og:url */
+  path?: string
 }
 
-const { lang, title } = Astro.props
+const { lang, title, description, path } = Astro.props
 const t = T[lang]
+
+/*
+ * canonical / og:url 必须是绝对 URL，否则搜索引擎无法正确判断页面归属与去重。
+ * Astro.site 来自 astro.config.mjs 的 site（构建时由 SITE_URL 环境变量注入），
+ * 缺失时回退到正式域名，避免构建产物里出现相对路径。
+ */
+const SITE_ORIGIN = Astro.site?.origin ?? 'https://skill.gautown.top'
+const pathname = path ?? Astro.url.pathname
+const canonical = new URL(pathname, SITE_ORIGIN).href
+const pageTitle = title ? `${title} · ${t.siteName}` : t.siteName
+const pageDesc = description ?? t.siteDesc
+const ogImage = new URL('/og.svg', SITE_ORIGIN).href
 ---
 
 <!doctype html>
@@ -22,14 +38,26 @@ const t = T[lang]
       if (__t) document.documentElement.dataset.theme = __t
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content={t.siteDesc} />
+    <meta name="description" content={pageDesc} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- canonical：告诉搜索引擎本页的唯一权威地址（站内中英同源时尤其重要） -->
+    <link rel="canonical" href={canonical} />
+
     <meta property="og:type" content="website" />
-    <meta property="og:title" content={title ? `${title} · ${t.siteName}` : t.siteName} />
-    <meta property="og:description" content={t.siteDesc} />
-    <meta property="og:image" content="/og.svg" />
+    <meta property="og:site_name" content={t.siteName} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDesc} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:locale" content={lang === 'zh' ? 'zh_CN' : 'en_US'} />
+
     <meta name="twitter:card" content="summary_large_image" />
-    <title>{title ? `${title} · ${t.siteName}` : t.siteName}</title>
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={pageDesc} />
+    <meta name="twitter:image" content={ogImage} />
+
+    <title>{pageTitle}</title>
   </head>
   <body>
     <Header lang={lang} />

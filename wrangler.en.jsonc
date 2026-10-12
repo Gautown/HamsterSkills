@@ -14,5 +14,6 @@
   },
   // 自定义域名：英文站只占用 /en/*，根路径留给中文站
   // 两者同 zone 且路径不重叠，Cloudflare 会按最精确匹配分派
-  "routes": [{ "pattern": "skill.gautown.top/en/*", "zone_name": "skill.gautown.top" }]
+  // zone_name 填域名所属的 zone（子域名的 zone 仍是 gautown.top）
+  "routes": [{ "pattern": "skill.gautown.top/en/*", "zone_name": "gautown.top" }]
 }
