@@ -270,7 +270,16 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
   if (!upstream.ok) {
     const body = await upstream.text().catch(() => '')
     console.error(`[chat] LLM 返回 ${upstream.status}: ${body.slice(0, 300)}`)
-    return json({ error: '模型暂时不可用，请稍后重试' }, 502)
+    /*
+     * 上游 429 是服务商侧的速率/额度限制（免费 key 尤其常见），
+     * 与本站的限额无关，重试也没用——要等对方的窗口恢复。
+     * 单独区分，否则用户会以为是站点故障，白等重试。
+     */
+    if (upstream.status === 429) {
+      return json({ error: '提问太频繁，服务商侧正在限流，请稍后再试' }, 429)
+    }
+    // 上游 5xx 属于服务商故障，值得让用户重试
+    return json({ error: upstream.status >= 500 ? '模型服务暂时不可用，请稍后重试' : '模型请求被拒绝，请稍后重试' }, 502)
   }
   if (!upstream.body) {
     return json({ error: '模型没有返回内容，请重试' }, 502)

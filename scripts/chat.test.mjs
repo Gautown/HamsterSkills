@@ -337,6 +337,41 @@ test('handleChat：上游无 body 时返回 502', async () => {
   }
 })
 
+test('handleChat：上游 429 映射为 429（服务商限流，与本站限额无关）', async () => {
+  // 实测：免费 key 密集调用会被服务商侧限流，原先被笼统报成「模型暂时不可用」，
+  // 用户会误以为是站点故障。
+  const restore = mockFetch(() => new Response('rate limited', { status: 429 }))
+  try {
+    const res = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '40.0.0.1'), okEnv)
+    assert.equal(res.status, 429, '上游限流应原样用 429，让前端能区分「等一会」')
+    assert.match((await res.json()).error, /服务商|限流/)
+  } finally {
+    restore()
+  }
+})
+
+test('handleChat：上游 5xx 映射为 502 且提示可重试', async () => {
+  const restore = mockFetch(() => new Response('oops', { status: 503 }))
+  try {
+    const res = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '40.0.0.2'), okEnv)
+    assert.equal(res.status, 502)
+    assert.match((await res.json()).error, /暂时不可用/)
+  } finally {
+    restore()
+  }
+})
+
+test('handleChat：上游 4xx（非 429）映射为 502', async () => {
+  const restore = mockFetch(() => new Response('bad model', { status: 400 }))
+  try {
+    const res = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '40.0.0.3'), okEnv)
+    assert.equal(res.status, 502)
+    assert.match((await res.json()).error, /拒绝/)
+  } finally {
+    restore()
+  }
+})
+
 /* ------------------------------ 流式（SSE）------------------------------ */
 
 test('SSE：响应头与协议正确', async () => {
