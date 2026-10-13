@@ -8,6 +8,7 @@
  *   node scripts/ai-classify.mjs --dry-run     # 只统计将要调用多少请求，不实际调用
  *   node scripts/ai-classify.mjs --limit 50    # 本次最多处理 50 条（调试/试水）
  *   node scripts/ai-classify.mjs --concurrency 5
+ *   node scripts/ai-classify.mjs --rate-retries 8   # 加大限流重试次数（默认 5）
  *   node scripts/ai-classify.mjs --status      # 打印记忆库统计，不调用 API
  *
  * 环境变量：
@@ -38,6 +39,7 @@ import {
   recordAiCategory,
   saveAiCache,
 } from '../src/lib/ai-cache.mjs'
+import { RateLimitError, createThrottle, isRateLimit, parseRetryAfter, withRateLimitRetry } from '../src/lib/rate-limit.mjs'
 
 const ROOT = process.cwd()
 const CACHE_PATH = path.join(ROOT, AI_CACHE_FILE)
@@ -56,7 +58,17 @@ const CONFIG = {
   maxTokens: 1600,
   timeoutMs: 120_000,
   retries: 2,
+  /** 撞到服务商速率限制后的重试次数（每次指数退避） */
+  rateLimitRetries: Number(readArg('--rate-retries') || 5),
+  /** 退避上限（毫秒） */
+  rateLimitMaxBackoffMs: 60_000,
 }
+
+/**
+ * 全局节流器：任一批次撞到 429，所有并发 worker 一起冷却。
+ * 否则每个 worker 各自退避，总并发并没有真的降下来。
+ */
+const throttle = createThrottle()
 
 const args = new Set(process.argv.slice(2))
 const DRY_RUN = args.has('--dry-run')
@@ -153,6 +165,10 @@ async function classifyBatch(items) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
+    // 429 单独识别：退避策略与「拆单条重试」策略都不同，见 RateLimitError 说明
+    if (res.status === 429) {
+      throw new RateLimitError(parseRetryAfter(res.headers.get('retry-after')), res.status)
+    }
     throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`)
   }
 
@@ -206,6 +222,7 @@ function parseCategoryMap(content, expected) {
 async function classifyWithFallback(item) {
   // 批量优先；批量失败时自动降级为单条重试（最多两轮）
   for (let attempt = 0; attempt <= CONFIG.retries; attempt++) {
+    await throttle.waitIfCooling()
     try {
       const { map, tokens } = await classifyBatch([{ ...item, i: 0 }])
       stats.requests++
@@ -213,6 +230,8 @@ async function classifyWithFallback(item) {
       const cat = map[0]
       if (cat) return cat
     } catch (error) {
+      // 限流时不再徒劳重试：交给下一批次/下一次运行
+      if (isRateLimit(error)) return undefined
       if (attempt === CONFIG.retries) {
         console.warn(`  ⚠ ${item.name} 分类失败：${error.message}`)
         return undefined
@@ -225,6 +244,26 @@ async function classifyWithFallback(item) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * 带节流与退避的批量调用。
+ *
+ * 撞到速率限制时**不拆单条、不放弃**，而是退避后重试同一个批次
+ * （5s → 10s → 20s → 40s → 60s 封顶，并采纳服务端 Retry-After）。
+ * 这样既不放大请求量，也真正把并发压下来了。
+ *
+ * 非限流错误直接抛出，交由调用方决定是否降级单条。
+ */
+function classifyBatchThrottled(items) {
+  return withRateLimitRetry(() => classifyBatch(items), {
+    throttle,
+    retries: CONFIG.rateLimitRetries,
+    maxBackoffMs: CONFIG.rateLimitMaxBackoffMs,
+    onBackoff(delay, attempt) {
+      console.warn(`  速率限制，全局冷却 ${Math.round(delay / 1000)}s 后重试（剩余 ${CONFIG.rateLimitRetries - attempt} 次机会）`)
+    },
+  })
 }
 
 /** 固定并发度执行 */
@@ -317,17 +356,27 @@ async function main() {
     let map = {}
     let tokens = 0
     try {
-      const r = await classifyBatch(items)
+      const r = await classifyBatchThrottled(items)
       map = r.map
       tokens = r.tokens
       stats.requests++
       stats.tokens += tokens
     } catch (error) {
-      // 批量失败 → 拆成单条重试，尽量不丢条目
-      console.warn(`  批次失败（${error.message}），降级为单条重试 ${batch.length} 条`)
-      for (const item of items) {
-        const cat = await classifyWithFallback(item)
-        if (cat) map[item.i] = cat
+      if (isRateLimit(error)) {
+        /*
+         * 退避用尽仍被限流：放弃这批，但**不要**降级单条。
+         * 单条重试会把 20 条变成 20 个请求，在限流期间无异于火上浇油。
+         * 这些条目下次运行会继续处理（记忆库按 id+sha，未成功的不会留下记录）。
+         */
+        stats.failed += batch.length
+        console.warn(`  退避后仍被限流，跳过本批 ${batch.length} 条（下次运行继续）`)
+      } else {
+        // 解析失败等普通错误：拆成单条重试，尽量不丢条目
+        console.warn(`  批次失败（${error.message}），降级为单条重试 ${batch.length} 条`)
+        for (const item of items) {
+          const cat = await classifyWithFallback(item)
+          if (cat) map[item.i] = cat
+        }
       }
     }
 

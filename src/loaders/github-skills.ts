@@ -296,8 +296,17 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
       }
 
       if (state.rateLimited) {
+        /*
+         * 限流会让本次构建静默产出**更小的站点**：拿不到文件树的仓库只能
+         * 退回旧缓存，上游新增的技能就消失了。这种降级必须显式报出来，
+         * 否则「部署成功」会掩盖「内容少了三千条」。
+         *
+         * 不直接让构建失败：站点变小仍好过整站不可用，
+         * 但看日志的人要能一眼发现，并知道配 GITHUB_TOKEN 就能解决。
+         */
         logger.warn(
-          '[github-skills] GitHub API 匿名限额（60 次/小时）已用尽，部分仓库本次跳过；设置 GITHUB_TOKEN 可完整聚合',
+          `[github-skills] ⚠ GitHub API 限额已用尽，本次构建已降级：共收录 ${totalLoaded} 个 skill，` +
+            `部分仓库只能使用旧缓存，上游新增的技能未收录。设置 GITHUB_TOKEN 可避免此降级。`,
         )
       }
 

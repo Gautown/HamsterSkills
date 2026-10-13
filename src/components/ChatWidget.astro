@@ -511,6 +511,23 @@ const strings = {
       }
     }
 
+    /*
+      面板打开时把页面其余部分设为 inert。
+      否则 Tab 会从输入框一路跑到背后的导航与正文——聊天窗是覆盖在
+      内容之上的浮层，键盘用户会「消失」在背景里找不到回来的路。
+      inert 同时会阻止背景里的链接被激活，比逐个改 tabindex 干净。
+    */
+    function setBackgroundInert(inert: boolean) {
+      for (const node of document.body.children) {
+        if (node === root) continue
+        if (inert) {
+          node.setAttribute('inert', '')
+        } else {
+          node.removeAttribute('inert')
+        }
+      }
+    }
+
     function scrollToEnd() {
       log.scrollTop = log.scrollHeight
     }
@@ -648,8 +665,15 @@ const strings = {
       if (failed && quotaBlocked) history.length = 0
     }
 
-    launcher.addEventListener('click', () => setOpen(!isOpen()))
-    closeBtn?.addEventListener('click', () => setOpen(false))
+    launcher.addEventListener('click', () => {
+      const next = !isOpen()
+      setOpen(next)
+      setBackgroundInert(next)
+    })
+    closeBtn?.addEventListener('click', () => {
+      setOpen(false)
+      setBackgroundInert(false)
+    })
 
     form.addEventListener('submit', event => {
       event.preventDefault()
@@ -667,7 +691,10 @@ const strings = {
 
     // Esc 收起面板
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && isOpen()) setOpen(false)
+      if (event.key === 'Escape' && isOpen()) {
+        setOpen(false)
+        setBackgroundInert(false)
+      }
     })
 
     setOpen(false)
