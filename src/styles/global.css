@@ -404,15 +404,7 @@ h2 {
   background: var(--secondary);
 }
 
-.lang-toggle {
-  border: 1px solid var(--line-strong);
-  color: var(--foreground) !important;
-  font-weight: 600;
-}
-
-.lang-toggle:hover {
-  background: var(--secondary);
-}
+/* .lang-toggle / .theme-toggle 的样式见文件后部「主题 / 语言切换按钮」 */
 
 /* hero */
 .hero {
@@ -1664,23 +1656,83 @@ h2 {
   background: rgba(220, 38, 38, 0.2);
 }
 
-/* theme toggle */
-.theme-toggle {
+/*
+ * 主题 / 语言切换按钮：纯图标。
+ * 两个按钮尺寸一致、视觉成对；用固定方形容器 + 居中图标，
+ * 避免原本文字长度差异造成的宽窄不一。
+ *
+ * 选择器带上 .site-header / .nav-mobile-foot 是必要的：
+ *   .site-header nav a { padding: 6px 10px } 的特异度是 (0,1,2)，
+ *   高于裸的 .lang-toggle (0,1,0)，不提高就会被它挤变形。
+ *   加上父级类后为 (0,2,0)，稳定压过。
+ */
+.site-header .theme-toggle,
+.site-header .lang-toggle,
+.nav-mobile-foot .theme-toggle,
+.nav-mobile-foot .lang-toggle {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
-  padding: 2px 10px;
-  font-size: 12px;
-  font-weight: 600;
   color: var(--muted);
   cursor: pointer;
   font-family: inherit;
-  transition: background 0.15s, color 0.15s;
+  font-weight: 400;
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
-.theme-toggle:hover {
+.site-header .theme-toggle:hover,
+.site-header .lang-toggle:hover,
+.nav-mobile-foot .theme-toggle:hover,
+.nav-mobile-foot .lang-toggle:hover {
   background: var(--secondary);
   color: var(--foreground);
+}
+
+.theme-toggle svg,
+.lang-toggle svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/*
+ * 日/月图标的显隐完全交给 CSS，脚本不参与。
+ * 需覆盖四种情况：显式深色 / 显式浅色 / 未选择且系统深色 / 未选择且系统浅色。
+ * 用户没手动选过时 html 上没有 data-theme，故用 :not([data-theme='light']) 兜住。
+ */
+.theme-toggle .icon-moon {
+  display: none;
+}
+
+:root[data-theme='dark'] .theme-toggle .icon-sun {
+  display: none;
+}
+
+:root[data-theme='dark'] .theme-toggle .icon-moon {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .theme-toggle .icon-sun {
+    display: none;
+  }
+
+  :root:not([data-theme='light']) .theme-toggle .icon-moon {
+    display: block;
+  }
 }
 
 /* tabs */

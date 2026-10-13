@@ -145,17 +145,40 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
         </div>
       </details>
 
+      {/*
+        主题按钮：文字换成图标。
+        两个图标都渲染在 DOM 里，由 CSS 按当前主题显示其一——
+        图标状态因此不依赖 JS，脚本只负责更新读屏文案。
+        aria-label 描述「点击后会发生什么」（切换到深色/浅色）而非当前状态，
+        因为按钮的用途就是「切到那个」。
+      */}
       <button
         class="theme-toggle"
         type="button"
         data-theme-toggle
-        data-dark-label={t.themeDark}
-        data-light-label={t.themeLight}
-        aria-label="Toggle theme"
+        data-label-dark={t.themeToDark}
+        data-label-light={t.themeToLight}
+        aria-label={t.themeToDark}
+        title={t.themeToDark}
       >
-        {t.themeDark}
+        <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.5" />
+          <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" />
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z" />
+        </svg>
       </button>
-      <a class="lang-toggle" href={altPath}>{t.langSwitch}</a>
+      {/*
+        语言按钮：文字换成地球图标。
+        title 仍给出目标语言（EN / 中文），纯图标看不出会跳到哪。
+      */}
+      <a class="lang-toggle" href={altPath} aria-label={t.langSwitchLabel} title={t.langSwitchLabel}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18M12 3a14 14 0 010 18a14 14 0 010-18z" />
+        </svg>
+      </a>
 
       {/* 窄屏汉堡按钮：仅 ≤900px 显示 */}
       <button
@@ -196,10 +219,33 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
       </a>
       <a href={`${base}/tags`} class:list={{ active: pathname.startsWith(`${base}/tags`) }}>{t.navTags}</a>
       <div class="nav-mobile-foot">
-        <button class="theme-toggle" type="button" data-theme-toggle data-dark-label={t.themeDark} data-light-label={t.themeLight}>
-          {t.themeDark}
+        {/*
+          窄屏面板里的副本，与桌面版结构相同。
+          两个主题按钮由 [data-theme-toggle] 统一同步。
+        */}
+        <button
+          class="theme-toggle"
+          type="button"
+          data-theme-toggle
+          data-label-dark={t.themeToDark}
+          data-label-light={t.themeToLight}
+          aria-label={t.themeToDark}
+          title={t.themeToDark}
+        >
+          <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.5" />
+            <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" />
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z" />
+          </svg>
         </button>
-        <a class="lang-toggle" href={altPath}>{t.langSwitch}</a>
+        <a class="lang-toggle" href={altPath} aria-label={t.langSwitchLabel} title={t.langSwitchLabel}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3a14 14 0 010 18a14 14 0 010-18z" />
+          </svg>
+        </a>
       </div>
     </div>
   </div>
@@ -212,11 +258,20 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
     const o = document.documentElement.dataset.theme
     return o ? o === 'dark' : mq.matches
   }
-  // 桌面与移动面板各有一个主题按钮，两者需同步
+  /*
+    桌面与移动面板各有一个主题按钮，需同步。
+    按钮内是图标（由 CSS 按主题显示），脚本不碰图标，只更新
+    aria-label 与 title——描述「点下去会切到哪个主题」。
+  */
   const themeBtns = Array.from(document.querySelectorAll<HTMLElement>('[data-theme-toggle]'))
   const paintThemes = () => {
+    const dark = isDark()
     for (const b of themeBtns) {
-      b.textContent = isDark() ? b.dataset.darkLabel : b.dataset.lightLabel
+      const label = dark ? b.dataset.labelLight : b.dataset.labelDark
+      if (label) {
+        b.setAttribute('aria-label', label)
+        b.setAttribute('title', label)
+      }
     }
   }
   for (const btn of themeBtns) {
@@ -228,6 +283,10 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
     })
   }
   paintThemes()
+  // 用户没手动选过时，系统主题可能在运行中变化（跟随系统切换的浏览器）
+  mq.addEventListener('change', () => {
+    if (!document.documentElement.dataset.theme) paintThemes()
+  })
 
   /* ---------- 全站搜索 ---------- */
   /*
