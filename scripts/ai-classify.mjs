@@ -3,7 +3,8 @@
  * AI 分类：为聚合进来的 skill 调用 LLM 判定分类，结果写入记忆库。
  *
  * 用法：
- *   node scripts/ai-classify.mjs               # 处理所有未记忆化的条目
+ *   npm run build                  # 先构建：loader 会在结束时写出技能清单
+ *   node scripts/ai-classify.mjs   # 再运行本脚本，判定清单里未记忆化的条目
  *   node scripts/ai-classify.mjs --dry-run     # 只统计将要调用多少请求，不实际调用
  *   node scripts/ai-classify.mjs --limit 50    # 本次最多处理 50 条（调试/试水）
  *   node scripts/ai-classify.mjs --concurrency 5
@@ -22,12 +23,16 @@
  *   4. **记忆化按 skill id + 内容 sha** —— 上游没改动的 skill 永远不重复付费。
  *   5. **失败降级** —— 批量解析失败时自动拆成单条重试；仍失败则跳过该条，
  *      保留规则层结果，绝不阻塞每日同步。
+ *   6. **输入来自 loader 写出的技能清单**（.cache/skills-remote/_manifest.json），
+ *      而不是另行爬取的语料。清单里的 id 与记忆库的键同源，
+ *      所以 AI 记下的结果一定能被下一次构建查到，不会出现「白花钱」。
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { classifySkill, CATEGORY_KEYS } from '../src/lib/classify.mjs'
 import {
   AI_CACHE_FILE,
+  SKILL_MANIFEST_FILE,
   aiCacheStats,
   loadAiCache,
   recordAiCategory,
@@ -36,7 +41,12 @@ import {
 
 const ROOT = process.cwd()
 const CACHE_PATH = path.join(ROOT, AI_CACHE_FILE)
-const DATA_FILE = path.join(ROOT, 'data', 'skills.json')
+/**
+ * 技能清单：由 astro build 的 loader 写出，记录本次构建实际收录的
+ * {id, sha, description}。id 与记忆库的键同源（见 src/lib/skill-id.mjs），
+ * 所以这里拿到的条目就是站点真实使用的条目，不会多花也不会漏判。
+ */
+const MANIFEST_PATH = path.join(ROOT, SKILL_MANIFEST_FILE)
 
 const CONFIG = {
   apiBase: (process.env.AI_API_BASE || 'https://api.agnes-ai.cn/v1').replace(/\/+$/, ''),
@@ -57,6 +67,37 @@ const CONCURRENCY = Number(readArg('--concurrency') || 3)
 function readArg(name) {
   const i = process.argv.indexOf(name)
   return i !== -1 ? process.argv[i + 1] : undefined
+}
+
+/**
+ * 读取 loader 写出的技能清单。
+ * 只保留 {id, sha, description} 三项，损坏条目直接丢弃——
+ * 清单缺失不该让整轮分类失败，规则层结果照常生效。
+ *
+ * @returns {Array<{id: string, sha: string, description: string}>}
+ */
+function readManifestSkills() {
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'))
+  } catch (error) {
+    console.warn(`技能清单解析失败：${error.message}`)
+    return []
+  }
+  if (!parsed || !Array.isArray(parsed.skills)) {
+    console.warn('技能清单格式异常（缺少 skills 数组），跳过 AI 分类')
+    return []
+  }
+  const out = []
+  for (const item of parsed.skills) {
+    if (!item || typeof item.id !== 'string' || typeof item.sha !== 'string') continue
+    out.push({
+      id: item.id,
+      sha: item.sha,
+      description: typeof item.description === 'string' ? item.description : '',
+    })
+  }
+  return out
 }
 
 const stats = {
@@ -220,13 +261,18 @@ async function main() {
     console.warn('未配置 AI_API_KEY，跳过 AI 分类（规则层结果照常生效）')
     return
   }
-  if (!fs.existsSync(DATA_FILE)) {
-    console.warn(`未找到 ${path.relative(ROOT, DATA_FILE)}，请先运行 npm run sync`)
+  if (!fs.existsSync(MANIFEST_PATH)) {
+    console.warn(
+      `未找到 ${path.relative(ROOT, MANIFEST_PATH)}，请先运行 npm run build（loader 会在构建结束时写出清单）`,
+    )
     return
   }
 
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))
-  const skills = Array.isArray(data.skills) ? data.skills : []
+  const skills = readManifestSkills()
+  if (skills.length === 0) {
+    console.warn('技能清单为空（远端聚合可能全部命中缓存或被上限截断），跳过 AI 分类')
+    return
+  }
   stats.total = skills.length
 
   // 只处理记忆库里没有「同 sha 记录」的条目
@@ -265,7 +311,7 @@ async function main() {
     const items = batch.map((s, idx) => ({
       i: idx,
       name: s.id,
-      desc: s.data?.description || s.data?.titleEn || s.id,
+      desc: s.description || s.id,
     }))
 
     let map = {}

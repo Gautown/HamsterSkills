@@ -99,29 +99,43 @@ Invoke-RestMethod -Method Post `
 
 ## 预期结果
 
-```
-sync 任务
-  ├─ npm run sync         同步 GitHub 技能（约 5 分钟）
-  └─ npm run ai-classify  AI 分类（首次约 35 分钟，命中记忆库则很快）
+整条链路现在是**单个 job**（原先拆成 `sync` + `refresh` 两个并行任务，
+但两者的 Actions 缓存互相读不到——GitHub 只允许后续 run 读取前一次写入的缓存——
+导致新发现的仓库与新写入的 AI 分类总是慢一天。已合并修正）：
 
-refresh 任务
-  ├─ npm run build        构建 20,287 页（约 3 分钟）
-  ├─ npm run split        切分 dist-zh / dist-en
-  ├─ npm run audit        数据审计
-  ├─ npm run deploy:zh    部署中文站 Worker
-  └─ npm run deploy:en    部署英文站 Worker
+```
+refresh 任务（约 20 分钟；AI 首次全量回填时约 55 分钟）
+  ├─ 恢复语料缓存与 AI 记忆库
+  ├─ npm run build         构建并写出技能清单（约 5 分钟）
+  ├─ npm run ai-classify   AI 分类（首次约 35 分钟，之后接近 0）
+  ├─ npm run build         带上 AI 分类重新构建（缓存已就位，0 次网络请求）
+  ├─ npm run split         切分 dist-zh / dist-en
+  ├─ npm run audit         数据审计
+  ├─ npm run deploy:zh     部署中文站 Worker
+  ├─ npm run deploy:en     部署英文站 Worker
+  └─ 保存语料缓存与 AI 记忆库
 ```
 
 部署成功后访问 **https://skill.gautown.top**
 
 ---
 
-## 已知风险：sync 任务可能超时
+## 关于「构建两次」
 
-`sync` job 的 `timeout-minutes: 30`，而首次 AI 全量回填约需 35 分钟 —— **大概率会超时中断**。
+记忆库是 loader 在**构建期**读取的，不重新构建就用不上刚写入的 AI 分类结果。
+所以链路是「构建 → AI 分类 → 再构建」。
+
+第二次构建时语料缓存已就位，未变更的仓库走 `unchanged` 分支、**0 次网络请求**，
+只多花页面渲染时间（约 5 分钟），不多花 GitHub API 配额。
+
+---
+
+## 已知风险：首次运行耗时长
+
+单 job 的 `timeout-minutes: 90`，而首次 AI 全量回填（约 35 分钟）叠加两次构建约需 55 分钟——**在预算内**。
 
 超时后的影响：
-- 已完成的记忆库**不会丢**（脚本每 10 批落盘一次，Actions 也会保存缓存）
+- 已完成的记忆库**不会丢**（脚本定期落盘，Actions 也会保存缓存）
 - 该次运行标记为失败，但下次运行会接着补
 
 **规避办法**：先在本地跑一次全量回填，缓存会被 Actions 恢复，就不必在 CI 里现算。
@@ -129,7 +143,8 @@ refresh 任务
 ```powershell
 # 本地设置 AI 密钥（不要提交 .env）
 $env:AI_API_KEY = "你的密钥"
-npm run ai-classify
+npm run build          # 先构建，loader 才会写出技能清单
+npm run ai-classify    # 再回填记忆库
 ```
 
 ---

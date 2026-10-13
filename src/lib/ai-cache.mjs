@@ -2,10 +2,16 @@
  * AI 分类记忆库：记录 LLM 对每个 skill 的分类结果。
  *
  * 为什么需要它：
- *   站点页面由 astro build 通过 loader（读 .cache/skills-remote）产出，
- *   而 AI 分类跑在 sync 之后。若只把结果写进 data/skills.json，站点根本看不到。
- *   把结果落到 .cache/ai-classify.json 后，loader 与同步脚本在分类时都会优先查这里，
- *   一次 AI 分类，站点构建与每日同步同时生效，无需改动站点任何代码。
+ *   站点页面由 astro build 通过 loader 产出，分类发生在构建期的 mapSkillData 里。
+ *   所以结果必须落在这个「构建时就会读到」的位置；若只写进别处（曾经的
+ *   data/skills.json），站点根本看不到。
+ *   把结果落到 .cache/ai-classify.json 后，loader 在分类时优先查这里，
+ *   一次 AI 分类，构建当次即生效，无需改动站点任何代码。
+ *
+ *   注意：id 是唯一键，sha 只是版本标记。同一个 id 被不同仓库提供时，
+ *   后写入的会覆盖先写入的——loader 侧用 store.has(id) 先到先得，
+ *   所以喂给本记忆库的清单必须与 loader 的收录结果完全一致
+ *   （见 SKILL_MANIFEST_FILE 与 src/lib/skill-id.mjs）。
  *
  * 记忆键是 skill id，值为该 skill 的内容 sha + 分类结果：
  *   内容没变（sha 相同）→ 复用历史结果，不重复调用 API
@@ -20,6 +26,16 @@ import nodePath from 'node:path'
 
 /** 记忆库文件相对项目根的路径 */
 export const AI_CACHE_FILE = '.cache/ai-classify.json'
+
+/**
+ * 技能清单文件相对项目根的路径。
+ *
+ * 由 astro build 的 loader 写出（loader 是「本次构建收录了哪些技能、
+ * 每个技能的 id 与内容 sha」的唯一权威），由 scripts/ai-classify.mjs 读取。
+ * 清单里的 id 与记忆库的键是同一套推导（见 skill-id.mjs），
+ * 所以 AI 记下来的结果一定能被下一次构建查到。
+ */
+export const SKILL_MANIFEST_FILE = '.cache/skills-remote/_manifest.json'
 
 /**
  * @typedef {Object} AiEntry

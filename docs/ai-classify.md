@@ -5,19 +5,35 @@
 ## 架构
 
 ```
+astro build ── loader 聚合远端技能
+      ↓
+.cache/skills-remote/_manifest.json   技能清单：{id, sha, description, repo}
+      ↓
 scripts/ai-classify.mjs         调用 LLM，产出分类结果
-        ↓
+      ↓
 .cache/ai-classify.json         记忆库：{ "<skillId>": { sha, category, at, tokens } }
-        ↓                      （由 .gitignore 忽略，但 Actions 缓存会保留）
-   ┌────┴────┐
-   ↓         ↓
-loader    sync-skills
-（构建时）  （每日同步时）
+      ↓                          （由 .gitignore 忽略，但 Actions 缓存会保留）
+astro build ── loader 读取记忆库，优先于规则层
 ```
 
-**记忆库是这一层的核心设计。** 站点页面由 `astro build` 通过 loader 产出，而 AI 分类跑在 sync 之后。
-若把结果只写进 `data/skills.json`，站点根本看不到。所以结果落在记忆库里，
-loader 与同步脚本在分类时都会优先查它——一次 AI 分类，两边同时生效，**无需改动任何站点代码**。
+**记忆库是这一层的核心设计。** 站点页面由 `astro build` 通过 loader 产出，分类发生在构建期的 `mapSkillData` 里。
+所以结果必须落在 loader 构建时就会读的文件里——落到别处（曾经的 `data/skills.json`）站点根本看不到。
+好处是**无需改动站点任何代码**，一次 AI 分类，构建期直接生效。
+
+### 输入为什么是「技能清单」而不是另行爬取的语料
+
+清单由 loader 在**所有去重与上限都生效之后**写出，因此 `npm run ai-classify` 读到的
+就是站点真实使用的技能集合：被 id 去重挤掉的、单仓/总量上限截断掉的、拉取失败的，都不在里面。
+
+这带来两个直接好处：
+
+- **不会白花钱** —— 脚本拿到什么就判什么，不存在「判了但站点用不到」的条目
+- **脚本无需复刻任何规则** —— id 推导、仓库顺序、截断上限全部留在 loader 一处
+
+> ⚠️ 清单里的 `id` 与记忆库的键是同一套推导（`src/lib/skill-id.mjs`）。
+> 若在两处各写一份 id 推导，一旦出现细微差异，记忆库会**静默错位**：
+> AI 花的钱记到用不上的键上，构建时查不到，只能退回规则层，且没有任何报错。
+> 所以这个模块被两个消费方共用，不允许复制。
 
 ### 记忆化为什么用「skill id + 内容 sha」
 
@@ -28,15 +44,19 @@ loader 与同步脚本在分类时都会优先查它——一次 AI 分类，两
 
 ## 用法
 
+清单由构建写出，所以**必须先 build 再 classify**：
+
 ```bash
-npm run ai-classify          # 处理所有未记忆化的条目
-npm run ai-classify:dry      # 只统计将发起多少请求，不调用
-npm run ai-classify:status   # 查看记忆库统计与分类分布
+npm run build              # loader 在构建结束时写出技能清单
+npm run ai-classify        # 处理清单里所有未记忆化的条目
+npm run ai-classify:dry    # 只统计将发起多少请求，不调用
+npm run ai-classify:status # 查看记忆库统计与分类分布
 node scripts/ai-classify.mjs --limit 50            # 本次最多处理 50 条
 node scripts/ai-classify.mjs --concurrency 5       # 提高并发
 ```
 
 未配置 `AI_API_KEY` 时脚本直接跳过并返回，规则层分类照常生效。
+清单不存在时同样跳过并提示先运行 `npm run build`。
 
 ## 环境变量
 
@@ -74,19 +94,30 @@ node scripts/ai-classify.mjs --concurrency 5       # 提高并发
 | --- | --- |
 | 平均成本 | ~50 tokens/条 |
 | 批次成功率 | 4/4 批次，80/80 分类全部合法 |
-| 全量 8,797 条首次回填 | 440 请求 / ~440k tokens / 并发 3 约 35 分钟 |
+| 全量约 8,900 条首次回填 | 约 445 请求 / ~440k tokens / 并发 3 约 35 分钟 |
 | 日常运行（记忆库已建立） | **0 请求** |
 | 内容变更的条目 | 按变更量计费，约 20 条/天 ≈ 1k tokens |
 
 ## CI
 
-`.github/workflows/refresh.yml` 的 `sync` 任务在 `npm run sync` 之后自动执行：
+`.github/workflows/refresh.yml` 中，构建要跑两次：
 
 ```yaml
-- name: AI 分类（记忆库命中的条目零成本，内容变更才重新调用）
+- name: 构建（写入技能清单）
+  run: npm run build
+
+- name: AI 分类
   run: npm run ai-classify | tee ai-output.txt
-  continue-on-error: true
+
+- name: 构建（应用 AI 分类）
+  run: npm run build
 ```
+
+**为什么构建两次**：记忆库是 loader 在构建期读取的，不重新构建就用不上刚写入的结果。
+只构建一次的话，AI 分类要等第二天才上线。第二次构建时语料缓存已就位，
+未变更的仓库走 `unchanged` 分支、**0 次网络请求**，只多花页面渲染时间，不多花 GitHub API 配额。
+
+脚本自身的失败降级（见上）保证 AI 不可用时不会中断整条链路，最差情况退回规则层分类。
 
 记忆库文件已加入 Actions 缓存的 path 列表，因此**每天只有真正的新增/变更条目会产生费用**。
 

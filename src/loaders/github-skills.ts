@@ -4,8 +4,9 @@ import { fileURLToPath } from 'node:url'
 import type { Loader, LoaderContext } from 'astro/loaders'
 import type { CategoryKey } from '../lib/categories'
 import { classifySkill } from '../lib/classify.mjs'
-import { AI_CACHE_FILE, loadAiCache, lookupAiCategory } from '../lib/ai-cache.mjs'
+import { AI_CACHE_FILE, SKILL_MANIFEST_FILE, loadAiCache, lookupAiCategory } from '../lib/ai-cache.mjs'
 import type { AiCacheFile } from '../lib/ai-cache.mjs'
+import { deriveSkillId, skillDirectory } from '../lib/skill-id.mjs'
 
 /* ------------------------------ 公共类型 ------------------------------ */
 
@@ -117,8 +118,34 @@ interface LoadRepoOptions extends ResolvedOptions {
   perRepoMaxSkills: number
 }
 
+/**
+ * 技能清单条目：本次构建真正收录的技能的最小信息集。
+ *
+ * 清单由 loader 在「所有去重与上限都生效之后」写出，因此
+ * `npm run ai-classify` 读到的就是站点真实使用的技能集合，
+ * 无需在脚本里复刻 id 推导、仓库顺序或截断规则。
+ */
+interface SkillManifestEntry {
+  id: string
+  /** SKILL.md 的内容 sha：记忆库据此判断内容是否变化 */
+  sha: string
+  /** 送进 AI 分类的描述文本 */
+  description: string
+  /** 来源仓库，便于排查 */
+  repo: string
+}
+
+interface SkillManifestFile {
+  version: number
+  builtAt: string
+  count: number
+  skills: SkillManifestEntry[]
+}
+
 interface LoadState {
   rateLimited: boolean
+  /** 本次构建收录的技能清单（按 store 写入顺序，即最终生效顺序） */
+  manifest: SkillManifestEntry[]
 }
 
 interface TreeResponse {
@@ -185,7 +212,7 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
     name: 'github-skills-loader',
     async load(context) {
       const { logger } = context
-      const state: LoadState = { rateLimited: false }
+      const state: LoadState = { rateLimited: false, manifest: [] }
 
       // AI 分类记忆库（由 scripts/ai-classify.mjs 生成）。
       // 每次构建加载一次；文件不存在属正常情况（尚未跑过 AI 分类），此时全部走规则层。
@@ -273,6 +300,14 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
           '[github-skills] GitHub API 匿名限额（60 次/小时）已用尽，部分仓库本次跳过；设置 GITHUB_TOKEN 可完整聚合',
         )
       }
+
+      /*
+       * 写出技能清单：这是「本次构建实际收录了什么」的唯一权威记录。
+       * `npm run ai-classify` 读它来决定哪些条目需要 AI 判定，
+       * 因此 id 去重、仓库顺序、单仓/总量截断都已在上面生效，
+       * 脚本无需（也不应）复刻任何一条规则。
+       */
+      writeSkillManifest(state.manifest, resolved.cacheDir, context.config.root, context.logger)
     },
   }
 }
@@ -542,7 +577,8 @@ async function loadRepo(
 
     const dir = skillDirectory(file.path)
     const dirName = dir.split('/').filter(Boolean).pop() ?? name
-    const id = slugify(dirName) || slugify(name)
+    // id 推导与离线脚本共用 src/lib/skill-id.mjs，避免 AI 记忆库错位
+    const id = deriveSkillId(file.path, name)
     if (!id) {
       skipped++
       logger.warn(`[github-skills] ${cfg.repo}: 无法为 ${file.path} 生成 id，已跳过`)
@@ -568,6 +604,13 @@ async function loadRepo(
       }),
     })
     store.set({ id, data, body: entry.body, digest: generateDigest({ data, body: entry.body }) })
+    // 收录成功才进清单：被去重挤掉或解析失败的条目不会让 AI 白花钱
+    state.manifest.push({
+      id,
+      sha: entry.sha,
+      description: describeForAi(data, id),
+      repo: cfg.repo,
+    })
     loaded++
   }
 
@@ -601,6 +644,17 @@ async function loadRepo(
 }
 
 /* ------------------------------ 字段映射 ------------------------------ */
+
+/**
+ * 送进 AI 分类的描述文本。
+ * 与旧版 ai-classify 脚本的取值顺序保持一致（description → titleEn → id），
+ * 否则同一批技能在换算成本时会得到不同的输入，记忆库复用率下降。
+ */
+function describeForAi(data: Record<string, unknown>, id: string): string {
+  const description = asString(data.description)
+  const titleEn = asString(data.titleEn)
+  return description || titleEn || id
+}
 
 /** 把 Agent Skills frontmatter 映射为本站 schema */
 function mapSkillData(frontmatter: Record<string, unknown>, ctx: SkillContext): Record<string, unknown> {
@@ -663,20 +717,7 @@ function isSkillFile(filePath: string, cfg: RemoteRepo): boolean {
   return !(cfg.skip ?? []).some(skip => relative === skip || relative.startsWith(`${skip}/`))
 }
 
-function skillDirectory(filePath: string): string {
-  const parts = filePath.replace(/\\/g, '/').split('/')
-  parts.pop()
-  return parts.join('/')
-}
-
-function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  // Windows 保留设备名（con/aux/nul 等）不能作为目录名
-  return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(slug) ? `${slug}-skill` : slug
-}
+// skillDirectory / slugify 已移至 src/lib/skill-id.mjs（与离线 AI 分类脚本共用）
 
 function titleCase(value: string): string {
   return value
@@ -805,6 +846,12 @@ function discoveryCachePath(cacheDir: string | URL | undefined, root: URL): stri
   return path.join(cacheDirPath(cacheDir, root), DISCOVERY_CACHE_FILE)
 }
 
+function skillManifestPath(cacheDir: string | URL | undefined, root: URL): string {
+  // SKILL_MANIFEST_FILE 是相对项目根的路径（脚本侧按 ROOT 拼接），
+  // 而 cacheDirPath() 已经给出了缓存目录本身，这里只取文件名部分。
+  return path.join(cacheDirPath(cacheDir, root), path.basename(SKILL_MANIFEST_FILE))
+}
+
 function cacheDirPath(cacheDir: string | URL | undefined, root: URL): string {
   if (!cacheDir) return fileURLToPath(new URL(`${DEFAULT_CACHE_DIR}/`, root))
   return cacheDir instanceof URL ? fileURLToPath(cacheDir) : path.resolve(cacheDir)
@@ -830,6 +877,35 @@ function readDiscoveryCache(file: string): DiscoveryCacheFile | null {
     return parsed && typeof parsed === 'object' && Array.isArray(parsed.repos) ? parsed : null
   } catch {
     return null
+  }
+}
+
+/**
+ * 写出技能清单（原子写：先临时文件再 rename）。
+ * 与语料缓存同目录，但不参与增量判定——每次构建无条件重写。
+ */
+function writeSkillManifest(
+  skills: SkillManifestEntry[],
+  cacheDir: string | URL | undefined,
+  root: URL,
+  logger: LoaderContext['logger'],
+): void {
+  const file = skillManifestPath(cacheDir, root)
+  const payload: SkillManifestFile = {
+    version: 1,
+    builtAt: new Date().toISOString(),
+    count: skills.length,
+    skills,
+  }
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const tmp = `${file}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify(payload), 'utf8')
+    fs.renameSync(tmp, file)
+    logger.info(`[github-skills] 已写出技能清单 ${skills.length} 条 → ${path.relative(fileURLToPath(root), file)}`)
+  } catch (error) {
+    // 清单只服务于离线 AI 分类，写失败不该让构建失败
+    logger.warn(`[github-skills] 技能清单写入失败，AI 分类将沿用上一轮结果 — ${message(error)}`)
   }
 }
 

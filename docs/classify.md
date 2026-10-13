@@ -6,11 +6,11 @@
 
 ```
 src/lib/classify.mjs          唯一实现（纯函数，无网络依赖）
-  ├─ src/loaders/github-skills.ts   构建时调用（站点数据来源）
-  └─ scripts/sync-skills.mjs        每日同步时调用（data/skills.json）
+  └─ src/loaders/github-skills.ts   构建时调用（站点数据来源）
 ```
 
-两处共用同一模块，不存在规则漂移。
+`npm run ai-classify` 不再判定分类，只把记忆库里已有的 AI 结果写回记忆库文件；
+分类本身仍发生在构建期的 loader 里（见 [ai-classify.md](./ai-classify.md)）。
 
 ## 判定链路
 

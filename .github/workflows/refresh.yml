@@ -6,6 +6,12 @@ name: refresh-skills
 #   2. repository_dispatch: refresh-request（同上 Worker 手动端点 /api/refresh）
 #   3. schedule（兜底；GitHub 对公开仓库的定时任务可能延迟）
 #   4. workflow_dispatch（手动）
+#
+# 为什么构建要跑两次：
+#   AI 分类记忆库是 loader 在「构建时」读取的，不重新构建就用不上新写入的结果。
+#   只构建一次的话，AI 分类要等第二天才上线。
+#   第二次构建时语料缓存已就位，未变更的仓库走 unchanged 分支、0 次网络请求，
+#   只多花页面渲染时间，不多花 GitHub API 配额。
 
 on:
   workflow_dispatch:
@@ -21,72 +27,23 @@ concurrency:
   group: refresh-skills
   cancel-in-progress: false
 
+env:
+  # Actions 自带令牌：api.github.com 1000 次/小时，足够自动发现 + 逐仓拉文件树。
+  # 不传则退化为匿名配额（60 次/小时），大量仓库会被静默跳过。
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SITE_URL: ${{ secrets.SITE_URL }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  AI_API_BASE: ${{ vars.AI_API_BASE || 'https://api.agnes-ai.cn/v1' }}
+  AI_API_KEY: ${{ secrets.AI_API_KEY }}
+  AI_MODEL: ${{ vars.AI_MODEL || 'agnes-3.0-flash' }}
+
 jobs:
-  sync:
-    name: 每日同步 GitHub 技能
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    outputs:
-      changed: ${{ steps.sync.outputs.summary }}
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      SITE_URL: ${{ secrets.SITE_URL }}
-      AI_API_BASE: ${{ vars.AI_API_BASE || 'https://api.agnes-ai.cn/v1' }}
-      AI_API_KEY: ${{ secrets.AI_API_KEY }}
-      AI_MODEL: ${{ vars.AI_MODEL || 'agnes-3.0-flash' }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-
-      - name: 恢复语料缓存（增量同步的关键）
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/skills-remote
-            .cache/ai-classify.json
-          key: skills-corpus-${{ github.run_id }}
-          restore-keys: |
-            skills-corpus-
-
-      - name: 同步（新增即写入、已有按 id 覆盖）
-        id: sync
-        run: npm run sync | tee sync-output.txt
-
-      - name: AI 分类（记忆库命中的条目零成本，内容变更才重新调用）
-        run: npm run ai-classify | tee ai-output.txt
-        continue-on-error: true
-
-      - name: 保存语料缓存
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            .cache/skills-remote
-            .cache/ai-classify.json
-          key: skills-corpus-${{ github.run_id }}
-
-      - name: 上传同步产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: skills-data
-          path: data/skills.json
-          retention-days: 7
-          if-no-files-found: error
-
   refresh:
     name: 同步并部署
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      # Actions 自带令牌：api.github.com 1000 次/小时，足够 6 次搜索 + ≤300 次文件树
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      SITE_URL: ${{ secrets.SITE_URL }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    # 构建×2 + AI 分类（首次全量回填约 35 分钟，之后接近 0）+ 双站上传
+    timeout-minutes: 90
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -104,7 +61,7 @@ jobs:
             if [ -z "${!v}" ]; then missing="$missing $v"; fi
           done
           if [ -n "$missing" ]; then
-            echo "::error::缺少必要的 Secrets：$missing（请在 Settings → Secrets 中配置）"
+            echo "::error::缺少必要的 Secrets：$missing（请在 Settings → Secrets and variables 中配置）"
             exit 1
           fi
           echo "SITE_URL=$SITE_URL"
@@ -112,15 +69,30 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
-      - name: 恢复语料缓存（增量同步的关键）
+      - name: 恢复语料缓存与 AI 记忆库
         uses: actions/cache@v4
         with:
-          path: .cache/skills-remote
+          path: |
+            .cache/skills-remote
+            .cache/ai-classify.json
+          # run_id 保证每次运行的 save 都不会撞 key；
+          # restore-keys 让本次恢复「最近一次」写入的语料，实现增量聚合。
           key: skills-corpus-${{ github.run_id }}
           restore-keys: |
             skills-corpus-
 
-      - name: 构建（含 GitHub 同步）
+      # ---- 第一次构建：拉取/复用语料，并由 loader 写出技能清单 ----
+      - name: 构建（写入技能清单）
+        run: npm run build
+
+      # ---- AI 分类：读清单 → 写记忆库 ----
+      # 记忆库命中的条目零成本，只有新增或正文变更的才调用 API。
+      # 未配置 AI_API_KEY 或调用失败时脚本自行跳过，规则层分类照常生效。
+      - name: AI 分类
+        run: npm run ai-classify | tee ai-output.txt
+
+      # ---- 第二次构建：带上刚写入的 AI 分类，让它当次生效 ----
+      - name: 构建（应用 AI 分类）
         run: npm run build
 
       - name: 切分双站资产
@@ -135,9 +107,13 @@ jobs:
       - name: 部署英文站 Worker
         run: npm run deploy:en
 
-      - name: 保存语料缓存
+      # 必须放在部署之后：无论前面哪步失败，语料与记忆库都要留存，
+      # 否则下次运行要重新爬取全部仓库、并为已知内容重复付费。
+      - name: 保存语料缓存与 AI 记忆库
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: .cache/skills-remote
+          path: |
+            .cache/skills-remote
+            .cache/ai-classify.json
           key: skills-corpus-${{ github.run_id }}
