@@ -461,9 +461,13 @@ const strings = {
     close: string
   }
 
-  interface ApiReply {
-    reply?: string
+  interface ApiEvent {
+    type?: 'meta' | 'delta' | 'error' | 'done'
+    text?: string
+    message?: string
+    /** 流开始之前的失败（HTTP 4xx/5xx）用的字段 */
     error?: string
+    model?: string
     dailyUsed?: number
     dailyLimit?: number
   }
@@ -544,41 +548,104 @@ const strings = {
       addBubble(content, 'user')
       history.push({ role: 'user', content })
 
+      // 「思考中」占位：收到第一个 delta 后被同一个气泡替换
       const pending = addBubble(strings.thinking, 'bot')
       pending.classList.add('chat-dots')
+      // 真正承载回复的气泡，与 pending 同位置，靠切换 display 复用
+      const target = document.createElement('p')
+      target.className = 'chat-bubble chat-bubble-bot'
+      target.hidden = true
+      pending.after(target)
+
+      let reply = ''
+      let failed = false
+      let quotaBlocked = false
 
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            // 后端会校验条数与长度，这里只做最基本的裁剪
             messages: history.slice(-20),
             context: skill ?? undefined,
           }),
         })
-        const data = (await res.json()) as ApiReply
-        pending.remove()
 
-        if (!res.ok || data.error) {
-          addBubble(data.error || strings.errorGeneric, 'error')
-          // 额度类错误不该让用户反复重试，清掉历史避免继续累积
-          if (res.status === 429) history.length = 0
-          return
+        if (!res.ok || !res.body) {
+          // 流开始之前的失败仍是普通 JSON，能拿到明确的错误文案
+          const data = (await res.json().catch(() => ({}))) as ApiEvent
+          // 429 = 限流或额度耗尽，重试也无意义
+          quotaBlocked = res.status === 429
+          throw new Error(data.error ?? data.message ?? strings.errorGeneric)
         }
 
-        const reply = data.reply ?? ''
-        addBubble(reply, 'bot')
-        history.push({ role: 'assistant', content: reply })
-        showQuota(data.dailyUsed, data.dailyLimit)
-      } catch {
+        target.hidden = false
         pending.remove()
-        addBubble(strings.errorGeneric, 'error')
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+
+          // SSE 以空行分隔事件；这里按 data: 行切分即可（本站协议无多行字段）
+          let newline = buffer.indexOf('\n')
+          while (newline !== -1) {
+            const line = buffer.slice(0, newline).trim()
+            buffer = buffer.slice(newline + 1)
+            newline = buffer.indexOf('\n')
+            if (!line.startsWith('data:')) continue
+
+            const payload = line.slice(5).trim()
+            if (!payload) continue
+
+            let event: ApiEvent
+            try {
+              event = JSON.parse(payload) as ApiEvent
+            } catch {
+              continue
+            }
+
+            if (event.type === 'delta' && event.text) {
+              reply += event.text
+              target.textContent = reply
+              scrollToEnd()
+            } else if (event.type === 'meta') {
+              showQuota(event.dailyUsed, event.dailyLimit)
+            } else if (event.type === 'error') {
+              throw new Error(event.message ?? strings.errorGeneric)
+            }
+          }
+        }
+
+        if (!reply) {
+          // 流正常结束但一个字都没有：模型返回了空内容
+          failed = true
+          target.remove()
+          addBubble(strings.errorGeneric, 'error')
+        } else {
+          history.push({ role: 'assistant', content: reply })
+        }
+      } catch (error) {
+        failed = true
+        pending.remove()
+        target.remove()
+        addBubble(error instanceof Error ? error.message : strings.errorGeneric, 'error')
       } finally {
         busy = false
         sendBtn.disabled = false
         input.focus()
       }
+
+      /*
+        只有额度被拒绝时才丢弃历史：
+        配额是全局的、短期内不会恢复，继续带着历史重试只会再撞 429。
+        网络抖动或模型异常则保留历史——用户很可能只是想让模型把刚才那句答完。
+      */
+      if (failed && quotaBlocked) history.length = 0
     }
 
     launcher.addEventListener('click', () => setOpen(!isOpen()))

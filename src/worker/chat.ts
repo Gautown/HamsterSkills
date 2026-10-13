@@ -1,9 +1,15 @@
 /**
- * 聊天端点：POST /api/chat
+ * 聊天端点：POST /api/chat（SSE 流式）
  *
  * 为什么必须有服务端：站点是全静态的，AI_API_KEY 一旦写进前端 JS，
  * 任何人查看网页源代码就能拿走。所以浏览器只与本站 Worker 通信，
  * 由 Worker 持密钥去调 LLM。
+ *
+ * 响应协议（text/event-stream，每个事件一行 data: JSON）：
+ *   {"type":"meta","model":…,"dailyUsed":…,"dailyLimit":…}   首帧，带额度用量
+ *   {"type":"delta","text":"增量文本"}                          正文，可出现任意多次
+ *   {"type":"error","message":"…"}                              流中途失败（状态码已发出）
+ *   {"type":"done"}                                             正常结束
  *
  * 双重限额（防止公开端点被刷）：
  *   1. 每 IP 每分钟 CHAT_RATE_LIMIT 条（isolate 内内存计数，best-effort）
@@ -19,8 +25,12 @@ const MAX_MESSAGE_CHARS = 2000
 const MAX_HISTORY = 20
 /** 注入系统提示的当前技能信息长度上限 */
 const MAX_CONTEXT_CHARS = 400
-/** 调用 LLM 的超时 */
-const LLM_TIMEOUT_MS = 30_000
+/**
+ * 流式响应超时（墙钟）。
+ * 比非流式宽裕：流式期间大部分时间在等上游推数据，不占 CPU，
+ * 但仍需上限以免连接悬挂。
+ */
+const LLM_TIMEOUT_MS = 60_000
 /** LLM 单次回复的 token 上限 */
 const MAX_TOKENS = 800
 
@@ -231,16 +241,20 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
   const apiBase = (env.AI_API_BASE || 'https://api.agnes-ai.cn/v1').replace(/\/+$/, '')
   const model = env.AI_MODEL || 'agnes-3.0-flash'
 
-  let reply: string
-  let tokens = 0
+  /*
+   * 到这里为止的校验都还能返回正常的 HTTP 状态码（403/405/429/400/503）。
+   * 一旦开始流式响应，响应头就已发出，后续只能通过 SSE 的 error 事件告知失败。
+   */
+  let upstream: Response
   try {
-    const res = await fetch(`${apiBase}/chat/completions`, {
+    upstream = await fetch(`${apiBase}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.AI_API_KEY}` },
       body: JSON.stringify({
         model,
         max_tokens: MAX_TOKENS,
         temperature: 0.3,
+        stream: true,
         messages: [
           { role: 'system', content: buildSystemPrompt(parsed.context) },
           ...parsed.messages,
@@ -248,26 +262,125 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
       }),
       signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     })
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      console.error(`[chat] LLM 返回 ${res.status}: ${body.slice(0, 300)}`)
-      return json({ error: '模型暂时不可用，请稍后重试' }, 502)
-    }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>
-      usage?: { total_tokens?: number }
-    }
-    const choice = data.choices?.[0]
-    reply = choice?.message?.content?.trim() ?? ''
-    tokens = data.usage?.total_tokens ?? 0
-    if (!reply) {
-      console.error('[chat] 模型返回空内容', JSON.stringify(data).slice(0, 300))
-      return json({ error: '模型没有返回内容，请重试' }, 502)
-    }
   } catch (error) {
     console.error('[chat] 调用模型异常', error)
     return json({ error: '网络异常，请稍后重试' }, 502)
   }
 
-  return json({ reply, model, usage: tokens, dailyUsed: quota.used, dailyLimit })
+  if (!upstream.ok) {
+    const body = await upstream.text().catch(() => '')
+    console.error(`[chat] LLM 返回 ${upstream.status}: ${body.slice(0, 300)}`)
+    return json({ error: '模型暂时不可用，请稍后重试' }, 502)
+  }
+  if (!upstream.body) {
+    return json({ error: '模型没有返回内容，请重试' }, 502)
+  }
+
+  return sseResponse(upstream.body, { model, dailyUsed: quota.used, dailyLimit })
+}
+
+/** 封装成一个 SSE 事件帧 */
+function sseFrame(payload: unknown): string {
+  return `data: ${JSON.stringify(payload)}\n\n`
+}
+
+/**
+ * 把上游的 OpenAI 兼容 SSE 重新封装成本站协议后转发。
+ *
+ * 不做裸管道的原因：
+ *   1. 流开始后响应头已发出，无法再改 HTTP 状态码。
+ *      上游中途断线只能靠 error 事件告知前端，而不是静默截断。
+ *   2. 可以把额度用量作为首帧带给前端（HTTP 头此时也已发出）。
+ *   3. 不把上游的 chunk 结构原样暴露给前端，后续换供应商时前端不用改。
+ *
+ * 上游帧格式：`data: {"choices":[{"delta":{"content":"..."}}]}`，以 `data: [DONE]` 结束。
+ */
+function sseResponse(
+  upstream: ReadableStream<Uint8Array>,
+  meta: { model: string; dailyUsed: number; dailyLimit: number },
+): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const encoder = new TextEncoder()
+      const send = (payload: unknown) => {
+        try {
+          controller.enqueue(encoder.encode(sseFrame(payload)))
+        } catch {
+          // 客户端已断开：忽略后续写入
+        }
+      }
+
+      send({ type: 'meta', model: meta.model, dailyUsed: meta.dailyUsed, dailyLimit: meta.dailyLimit })
+
+      const reader = upstream.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let finished = false
+
+      try {
+        while (!finished) {
+          const { value, done } = await reader.read()
+          if (done) break
+          // stream: true 必须，否则多字节字符会被截断
+          buffer += decoder.decode(value, { stream: true })
+
+          // 按行切分。注意不能用 split('\n') 后丢弃残块——
+          // 一个 SSE 帧可能跨多个 TCP 包到达，残块要留在 buffer 里等下一批。
+          let newline = buffer.indexOf('\n')
+          while (newline !== -1) {
+            const line = buffer.slice(0, newline).trim()
+            buffer = buffer.slice(newline + 1)
+            newline = buffer.indexOf('\n')
+
+            // 忽略空行、注释行（以 : 开头）与 event:/id: 等字段
+            if (!line.startsWith('data:')) continue
+            const payload = line.slice(5).trim()
+            if (!payload) continue
+            if (payload === '[DONE]') {
+              finished = true
+              break
+            }
+
+            let delta: unknown
+            try {
+              delta = JSON.parse(payload)?.choices?.[0]?.delta?.content
+            } catch {
+              // 单帧解析失败不应中断整条流，跳过即可
+              continue
+            }
+            // 首帧通常只带 role，content 为空串；空串不必推送
+            if (typeof delta === 'string' && delta.length > 0) {
+              send({ type: 'delta', text: delta })
+            }
+          }
+        }
+        send({ type: 'done' })
+      } catch (error) {
+        console.error('[chat] 流式传输中断', error)
+        send({ type: 'error', message: '连接中断，请重试' })
+      } finally {
+        try {
+          await reader.cancel()
+        } catch {
+          // 已结束
+        }
+        try {
+          controller.close()
+        } catch {
+          // 已关闭
+        }
+      }
+    },
+  })
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      // no-transform：防止中间层缓冲，破坏流式效果
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
 }

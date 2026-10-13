@@ -38,14 +38,40 @@ function mockFetch(handler) {
   }
 }
 
-const llmOk = (content = '推荐 pdf 相关技能') =>
-  new Response(
-    JSON.stringify({
-      choices: [{ message: { content }, finish_reason: 'stop' }],
-      usage: { total_tokens: 42 },
-    }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } },
-  )
+/**
+ * 造一个上游 SSE 响应。
+ * chunks 用来模拟「一个 SSE 帧跨多个 TCP 包到达」——这是流式实现最易错的地方。
+ * 字符串会按 UTF-8 编码；Uint8Array 原样透传（用于逐字节拆分的极端场景）。
+ */
+function llmStream(chunks) {
+  const enc = new TextEncoder()
+  const body = new ReadableStream({
+    start(controller) {
+      for (const c of chunks) {
+        controller.enqueue(c instanceof Uint8Array ? c : enc.encode(c))
+      }
+      controller.close()
+    },
+  })
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+}
+
+/** 读取 SSE 响应并解析成事件数组 */
+async function readEvents(res) {
+  const text = await res.text()
+  return text
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('data:'))
+    .map(l => JSON.parse(l.slice(5).trim()))
+}
+
+/** 上游帧文本：首帧只带 role，随后逐块带 content，末帧 [DONE] */
+const frame = content => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`
+const roleFrame = `data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant' } }] })}\n\n`
+
+/** 默认的成功上游响应：一段正常内容 + [DONE] */
+const llmOk = (content = '推荐 pdf 相关技能') => llmStream([roleFrame, frame(content), 'data: [DONE]\n\n'])
 
 /* ------------------------------ normalize ------------------------------ */
 
@@ -267,16 +293,18 @@ function makeKv() {
     put: async (k, v) => {
       store.set(k, v)
     },
+    /** 仅测试用：查看内部状态 */
+    dump: () => store,
   }
 }
 
-test('handleChat：正常路径返回模型回复与额度用量', async () => {
+test('handleChat：正常路径返回 SSE 流并在 meta 帧带额度', async () => {
   let seenUrl = ''
   let seenBody = null
   const restore = mockFetch((url, init) => {
     seenUrl = url
     seenBody = JSON.parse(String(init.body))
-    return llmOk('推荐 doc-coauthoring')
+    return llmStream([roleFrame, frame('推荐 '), frame('doc-coauthoring'), 'data: [DONE]\n\n'])
   })
   try {
     const res = await handleChat(
@@ -284,20 +312,14 @@ test('handleChat：正常路径返回模型回复与额度用量', async () => {
         { messages: [{ role: 'user', content: '怎么写文档' }], context: { title: 'PDF 处理', category: 'office' } },
         '5.5.5.5',
       ),
-      okEnv,
+      { ...okEnv, CHAT_QUOTA: makeKv() },
     )
     assert.equal(res.status, 200)
-    const data = await res.json()
-    assert.equal(data.reply, '推荐 doc-coauthoring')
-    assert.equal(data.model, 'agnes-3.0-flash')
-    assert.equal(data.usage, 42)
-    assert.ok(data.dailyLimit > 0)
-
-    // 请求确实打到了配置好的端点
+    const events = await readEvents(res)
+    assert.equal(events[0].type, 'meta')
+    assert.equal(events.filter(e => e.type === 'delta').map(d => d.text).join(''), '推荐 doc-coauthoring')
     assert.match(seenUrl, /\/chat\/completions$/)
-    // 系统提示里带上了技能上下文
     assert.match(seenBody.messages[0].content, /PDF 处理/)
-    // 密钥走 Authorization 头，不会出现在 body 里
     assert.equal(seenBody.messages[0].role, 'system')
     assert.equal(JSON.stringify(seenBody).includes('test-key'), false)
   } finally {
@@ -305,22 +327,190 @@ test('handleChat：正常路径返回模型回复与额度用量', async () => {
   }
 })
 
-test('handleChat：LLM 返回非 2xx 时返回 502', async () => {
-  const restore = mockFetch(() => new Response('boom', { status: 500 }))
+test('handleChat：上游无 body 时返回 502', async () => {
+  const restore = mockFetch(() => new Response(null, { status: 200 }))
   try {
-    const res = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '6.6.6.6'), okEnv)
+    const res = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '6.6.7.7'), okEnv)
     assert.equal(res.status, 502)
-    assert.match((await res.json()).error, /暂时不可用/)
   } finally {
     restore()
   }
 })
 
-test('handleChat：模型返回空内容时返回 502', async () => {
-  const restore = mockFetch(() => new Response(JSON.stringify({ choices: [{ message: { content: '  ' } }] }), { status: 200 }))
+/* ------------------------------ 流式（SSE）------------------------------ */
+
+test('SSE：响应头与协议正确', async () => {
+  const restore = mockFetch(() => llmStream([roleFrame, frame('你好'), 'data: [DONE]\n\n']))
+  try {
+    const res = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '30.0.0.1'), okEnv)
+    assert.equal(res.status, 200)
+    assert.match(res.headers.get('Content-Type') ?? '', /text\/event-stream/)
+    assert.match(res.headers.get('Cache-Control') ?? '', /no-cache/)
+    assert.match(res.headers.get('Cache-Control') ?? '', /no-transform/)
+    assert.equal(res.headers.get('X-Accel-Buffering'), 'no')
+  } finally {
+    restore()
+  }
+})
+
+test('SSE：首帧带额度，末帧为 done', async () => {
+  const restore = mockFetch(() => llmStream([roleFrame, frame('你好'), 'data: [DONE]\n\n']))
+  try {
+    const events = await readEvents(
+      await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '30.0.0.2'), {
+        ...okEnv,
+        CHAT_QUOTA: makeKv(),
+      }),
+    )
+    assert.equal(events[0].type, 'meta')
+    assert.equal(events[0].model, 'agnes-3.0-flash')
+    assert.ok(events[0].dailyLimit > 0)
+    assert.equal(events.at(-1).type, 'done')
+  } finally {
+    restore()
+  }
+})
+
+test('SSE：只推送非空 content（跳过 role 首帧与空串）', async () => {
+  const restore = mockFetch(() => llmStream([roleFrame, frame(''), frame('A'), frame('B'), 'data: [DONE]\n\n']))
+  try {
+    const events = await readEvents(
+      await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '30.0.0.3'), okEnv),
+    )
+    const deltas = events.filter(e => e.type === 'delta')
+    assert.deepEqual(deltas.map(d => d.text), ['A', 'B'])
+  } finally {
+    restore()
+  }
+})
+
+test('SSE：一个帧跨多个 chunk 到达也能正确重组', async () => {
+  const whole = frame('Hello World')
+  const cut = Math.floor(whole.length / 2)
+  const restore = mockFetch(() => llmStream([whole.slice(0, cut), whole.slice(cut), 'data: [DONE]\n\n']))
+  try {
+    const events = await readEvents(
+      await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '30.0.0.4'), okEnv),
+    )
+    const deltas = events.filter(e => e.type === 'delta')
+    assert.deepEqual(deltas.map(d => d.text), ['Hello World'], '跨 chunk 的帧内容必须完整')
+  } finally {
+    restore()
+  }
+})
+
+test('SSE：逐字节拆分也不会丢内容（多字节字符安全）', async () => {
+  const bytes = new TextEncoder().encode(frame('中文测试内容'))
+  const restore = mockFetch(() => llmStream([...bytes].map(b => new Uint8Array([b]))))
+  try {
+    const events = await readEvents(
+      await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '30.0.0.5'), okEnv),
+    )
+    const deltas = events.filter(e => e.type === 'delta')
+    assert.deepEqual(deltas.map(d => d.text), ['中文测试内容'], 'UTF-8 被切断时不应产生乱码')
+  } finally {
+    restore()
+  }
+})
+
+test('SSE：忽略注释行与非 data 字段', async () => {
+  const restore = mockFetch(() =>
+    llmStream([': keep-alive\n\n', 'event: message\n', frame('ok'), 'data: [DONE]\n\n']),
+  )
+  try {
+    const events = await readEvents(
+      await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '30.0.0.6'), okEnv),
+    )
+    assert.deepEqual(events.filter(e => e.type === 'delta').map(d => d.text), ['ok'])
+  } finally {
+    restore()
+  }
+})
+
+test('SSE：单个坏帧被跳过，不中断整条流', async () => {
+  const restore = mockFetch(() =>
+    llmStream([frame('前'), 'data: {这不是 JSON}\n\n', frame('后'), 'data: [DONE]\n\n']),
+  )
+  try {
+    const events = await readEvents(
+      await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '30.0.0.7'), okEnv),
+    )
+    assert.deepEqual(events.filter(e => e.type === 'delta').map(d => d.text), ['前', '后'])
+    assert.equal(events.at(-1).type, 'done')
+  } finally {
+    restore()
+  }
+})
+
+test('SSE：上游中途断开时发 error 事件而非静默截断', async () => {
+  const restore = mockFetch(() => {
+    const enc = new TextEncoder()
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(enc.encode(frame('半句')))
+      },
+      pull(controller) {
+        controller.error(new Error('connection reset'))
+      },
+    })
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  })
+  try {
+    const events = await readEvents(
+      await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '30.0.0.8'), okEnv),
+    )
+    assert.equal(events.at(-1).type, 'error', '应发 error 事件告知前端')
+    assert.match(events.at(-1).message, /连接中断/)
+  } finally {
+    restore()
+  }
+})
+
+test('SSE：上游未发 [DONE] 直接结束时补发 done', async () => {
+  const restore = mockFetch(() => llmStream([frame('内容')]))
+  try {
+    const events = await readEvents(
+      await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '30.0.0.9'), okEnv),
+    )
+    assert.equal(events.at(-1).type, 'done', '正常结束也必须有 done，前端据此收尾')
+    assert.deepEqual(events.filter(e => e.type === 'delta').map(d => d.text), ['内容'])
+  } finally {
+    restore()
+  }
+})
+
+test('SSE：向上游请求流式，且系统提示含技能上下文', async () => {
+  let seenBody = null
+  const restore = mockFetch((url, init) => {
+    assert.match(url, /\/chat\/completions$/)
+    seenBody = JSON.parse(String(init.body))
+    return llmStream([frame('ok'), 'data: [DONE]\n\n'])
+  })
+  try {
+    await handleChat(
+      postRequest(
+        { messages: [{ role: 'user', content: '怎么写文档' }], context: { title: 'PDF 处理', category: 'office' } },
+        '30.0.0.10',
+      ),
+      okEnv,
+    )
+    assert.equal(seenBody.stream, true, '必须向上游请求流式')
+    assert.match(seenBody.messages[0].content, /PDF 处理/)
+    assert.equal(JSON.stringify(seenBody).includes('test-key'), false, '密钥不能出现在请求体里')
+  } finally {
+    restore()
+  }
+})
+
+test('handleChat：模型只返回空内容时，流里没有任何 delta', async () => {
+  // 流本身是 200（无法再改状态码），由前端发现「一个 delta 都没有」后提示重试
+  const restore = mockFetch(() => llmStream([roleFrame, frame(''), 'data: [DONE]\n\n']))
   try {
     const res = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '7.7.7.7'), okEnv)
-    assert.equal(res.status, 502)
+    assert.equal(res.status, 200)
+    const events = await readEvents(res)
+    assert.equal(events.filter(e => e.type === 'delta').length, 0)
+    assert.equal(events.at(-1).type, 'done')
   } finally {
     restore()
   }
@@ -371,9 +561,11 @@ test('handleChat：畸形请求不消耗每日额度', async () => {
     assert.equal(store.size, 0, '畸形请求不应写入额度计数器')
 
     // 额度没被占用，正常请求仍然可用
-    const ok = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '20.0.0.99'), env)
-    assert.equal(ok.status, 200)
-    assert.equal((await ok.json()).dailyUsed, 1)
+    const events = await readEvents(
+      await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '20.0.0.99'), env),
+    )
+    assert.equal(events[0].type, 'meta')
+    assert.equal(events[0].dailyUsed, 1, '额度应从 1 开始算，说明前面的畸形请求没消耗')
   } finally {
     restore()
   }
@@ -401,25 +593,21 @@ test('handleChat：KV 故障时降级为内存计数而非拒绝服务', async (
 })
 
 test('handleChat：KV 正常时按额度累加', async () => {
-  const store = new Map()
-  const kv = {
-    get: async k => store.get(k) ?? null,
-    put: async (k, v) => {
-      store.set(k, v)
-    },
-  }
-  const restore = mockFetch(() => llmOk())
+  const kv = makeKv()
+  const restore = mockFetch(() => llmStream([frame('ok'), 'data: [DONE]\n\n']))
   try {
     for (let i = 1; i <= 3; i++) {
-      const res = await handleChat(
-        postRequest({ messages: [{ role: 'user', content: `q${i}` }] }, `11.11.11.${i}`),
-        { ...okEnv, CHAT_QUOTA: kv, CHAT_DAILY_LIMIT: '10', CHAT_RATE_LIMIT: '10' },
+      const events = await readEvents(
+        await handleChat(
+          postRequest({ messages: [{ role: 'user', content: `q${i}` }] }, `11.11.11.${i}`),
+          { ...okEnv, CHAT_QUOTA: kv, CHAT_DAILY_LIMIT: '10', CHAT_RATE_LIMIT: '10' },
+        ),
       )
-      const data = await res.json()
-      assert.equal(data.dailyUsed, i)
+      assert.equal(events[0].dailyUsed, i)
     }
-    assert.equal(store.size, 1, '同一天应共用一个计数器键')
-    assert.match([...store.keys()][0], /^chat:\d{4}-\d{2}-\d{2}$/)
+    const keys = [...kv.dump().keys()]
+    assert.equal(keys.length, 1, '同一天应共用一个计数器键')
+    assert.match(keys[0], /^chat:\d{4}-\d{2}-\d{2}$/)
   } finally {
     restore()
   }
@@ -448,7 +636,23 @@ test('handleChat：响应含 nosniff，避免 MIME 嗅探', async () => {
   try {
     const res = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '13.13.13.13'), okEnv)
     assert.equal(res.headers.get('X-Content-Type-Options'), 'nosniff')
+    // SSE 用 no-cache + no-transform：既不让中间层缓存，也禁止缓冲破坏流式
+    assert.match(res.headers.get('Cache-Control') ?? '', /no-cache/)
+    assert.match(res.headers.get('Cache-Control') ?? '', /no-transform/)
+  } finally {
+    restore()
+  }
+})
+
+test('handleChat：流开始之前的失败仍是普通 JSON（可读错误文案）', async () => {
+  const restore = mockFetch(() => llmOk())
+  try {
+    const res = await handleChat(postRequest({ messages: [] }, '14.14.14.14'), okEnv)
+    assert.equal(res.status, 400)
+    assert.match(res.headers.get('Content-Type') ?? '', /application\/json/)
     assert.match(res.headers.get('Cache-Control') ?? '', /no-store/)
+    const data = await res.json()
+    assert.ok(data.error, '错误响应体应带可读文案')
   } finally {
     restore()
   }
