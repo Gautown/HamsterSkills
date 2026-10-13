@@ -37,7 +37,6 @@ const strings = {
   thinking: t.chatThinking,
   greeting: t.chatGreeting,
   errorGeneric: t.chatErrorGeneric,
-  quotaLeft: t.chatQuotaLeft,
   contextBadge: t.chatContextBadge,
   open: t.chatOpen,
   close: t.chatClose,
@@ -87,7 +86,6 @@ const strings = {
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10l14-7-5 7 5 7z" /></svg>
       </button>
     </form>
-    <p class="chat-quota" id="chat-quota" hidden></p>
   </div>
 
   <button class="chat-launcher" type="button" id="chat-launcher" aria-label={strings.open} aria-expanded="false">
@@ -363,17 +361,6 @@ const strings = {
     stroke-linejoin: round;
   }
 
-  .chat-quota {
-    margin: 0;
-    padding: 0 12px 9px;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .chat-quota[hidden] {
-    display: none;
-  }
-
   /* 等待模型回复时的三点动画 */
   .chat-dots::after {
     content: '…';
@@ -455,7 +442,6 @@ const strings = {
     thinking: string
     greeting: string
     errorGeneric: string
-    quotaLeft: string
     contextBadge: string
     open: string
     close: string
@@ -467,9 +453,6 @@ const strings = {
     message?: string
     /** 流开始之前的失败（HTTP 4xx/5xx）用的字段 */
     error?: string
-    model?: string
-    dailyUsed?: number
-    dailyLimit?: number
   }
 
   interface SkillContext {
@@ -488,7 +471,6 @@ const strings = {
     const input = root.querySelector<HTMLTextAreaElement>('#chat-input')
     const sendBtn = root.querySelector<HTMLButtonElement>('#chat-send')
     const log = root.querySelector<HTMLElement>('#chat-log')
-    const quota = root.querySelector<HTMLElement>('#chat-quota')
     if (!dock || !panel || !launcher || !form || !input || !sendBtn || !log) return
 
     const strings = JSON.parse(root.dataset.strings ?? '{}') as ChatStrings
@@ -539,13 +521,6 @@ const strings = {
       log.appendChild(p)
       scrollToEnd()
       return p
-    }
-
-    function showQuota(used?: number, limit?: number) {
-      if (!quota || typeof used !== 'number' || typeof limit !== 'number') return
-      const left = Math.max(0, limit - used)
-      quota.textContent = strings.quotaLeft.replace('{n}', String(left))
-      quota.hidden = false
     }
 
     /** 输入框随内容增高，到 5 行封顶后改为内部滚动 */
@@ -630,8 +605,6 @@ const strings = {
               reply += event.text
               target.textContent = reply
               scrollToEnd()
-            } else if (event.type === 'meta') {
-              showQuota(event.dailyUsed, event.dailyLimit)
             } else if (event.type === 'error') {
               throw new Error(event.message ?? strings.errorGeneric)
             }

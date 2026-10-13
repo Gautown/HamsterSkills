@@ -63,6 +63,9 @@
 | `error` | 流中途失败 | `{message}` |
 | `done` | 结束 | `{}` |
 
+`meta` 帧里的额度字段前端**不展示**（用户不需要看到剩余次数），
+但协议里保留，便于将来要做用量统计时无需改后端。
+
 响应头：`Cache-Control: no-cache, no-transform`（禁止中间层缓冲）、`X-Accel-Buffering: no`、`X-Content-Type-Options: nosniff`。
 
 ### 为什么要重新封装，而不是裸管道
