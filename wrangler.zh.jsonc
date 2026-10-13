@@ -9,6 +9,9 @@
     "directory": "./dist-zh",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page",
+    // 聊天端点用它读取 skills-index.json 作为站内检索索引。
+    // 加绑定不改变路由：run_worker_first 仍是 /api/*，静态请求依旧绕过 Worker。
+    "binding": "ASSETS",
     // 仅让 API 路径进入 Worker，其余请求由静态资产层直接响应（省免费版 10 万次/天请求额度）
     "run_worker_first": ["/api/*"]
   },

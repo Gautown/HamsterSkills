@@ -11,6 +11,9 @@
  *   {"type":"error","message":"…"}                              流中途失败（状态码已发出）
  *   {"type":"done"}                                             正常结束
  *
+ * 站内技能检索：每次提问用最后一问去匹配 skills-index.json，top-10 注入系统提示。
+ * 整库塞进提示约 43k tokens，既贵又会被截断，检索是唯一可行解。
+ *
  * 双重限额（防止公开端点被刷）：
  *   1. 每 IP 每分钟 CHAT_RATE_LIMIT 条（isolate 内内存计数，best-effort）
  *   2. 全站每天 CHAT_DAILY_LIMIT 条（KV 计数器，按 UTC 日期分键）
@@ -18,6 +21,8 @@
  *
  * 限额配置在 wrangler.zh.jsonc 的 vars 里，密钥走 wrangler secret put。
  */
+import { buildIndex, formatHits, search, toSearchable } from '../lib/search-index.mjs'
+import type { SearchHit } from '../lib/search-index.mjs'
 
 /** 单条消息最大字符数 */
 const MAX_MESSAGE_CHARS = 2000
@@ -33,6 +38,12 @@ const MAX_CONTEXT_CHARS = 400
 const LLM_TIMEOUT_MS = 60_000
 /** LLM 单次回复的 token 上限 */
 const MAX_TOKENS = 800
+/**
+ * 每次注入的站内技能条数。
+ * 10 条约合 1-2k tokens：足够覆盖真实需求，又不至于挤占回答空间；
+ * 再多会稀释相关性，也会让模型倾向把清单全念一遍。
+ */
+const SEARCH_TOP_K = 10
 
 /** 每 IP 频率限制窗口 */
 const RATE_WINDOW_MS = 60_000
@@ -57,6 +68,8 @@ export const LIMITS = {
 } as const
 
 export interface ChatEnv {
+  /** 静态资产绑定：用于读取站内技能索引（skills-index.json） */
+  ASSETS?: { fetch(request: Request): Promise<Response> }
   AI_API_BASE?: string
   AI_MODEL?: string
   AI_API_KEY?: string
@@ -89,8 +102,56 @@ const SYSTEM_PROMPT = `你是「仓鼠技能库」的助手（hamster.gautown.to
 要求：
 - 用提问者的语言回答（中文提问就中文回答，英文提问就英文回答）
 - 简洁务实，不要客套话和免责声明
-- 你看不到完整的技能清单。如果用户问某个具体技能而你不能确定是否存在，就直说「站内可以搜索 XXX」，不要编造技能名或仓库地址
+- 你的技能知识来自下方按问题检索出的候选清单。清单里没有的技能，你就说不知道，
+  绝不要编造技能名、路径或仓库地址
 - 超出技能库范围的问题（写代码、闲聊、时事等），简短说明你只负责这个技能库的答疑，然后引导回技能相关问题`
+
+/**
+ * 站内技能检索索引：按需加载一次，常驻 isolate 内存。
+ * 加载失败会降级为空索引 —— 助手仍能回答，只是不再引用站内技能。
+ *
+ * @type {import('../lib/search-index.mjs').SearchIndex | null}
+ */
+let skillIndex = null
+/** @type {Promise<import('../lib/search-index.mjs').SearchIndex> | null} */
+let skillIndexLoading = null
+
+/**
+ * @param {ChatEnv} env
+ * @param {string} origin 请求来源，用于拼索引的真实地址
+ */
+async function getSkillIndex(env: ChatEnv, origin: string) {
+  if (skillIndex) return skillIndex
+  if (skillIndexLoading) return skillIndexLoading
+  if (!env.ASSETS) {
+    console.warn('[chat] 无 ASSETS 绑定，跳过技能索引加载')
+    skillIndex = buildIndex([])
+    return skillIndex
+  }
+
+  skillIndexLoading = (async () => {
+    try {
+      // 必须用真实来源：ASSETS 绑定不接受虚构的 host
+      const url = new URL('/skills-index.json', origin)
+      const res = await env.ASSETS.fetch(new Request(url.toString()))
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const items = Array.isArray(data) ? data : data?.items
+      if (!Array.isArray(items) || items.length === 0) throw new Error('索引内容为空')
+      const searchable = toSearchable(items)
+      skillIndex = buildIndex(searchable)
+      console.log(`[chat] 技能索引已加载：${searchable.length} 条`)
+    } catch (error) {
+      console.error('[chat] 技能索引加载失败，助手本次不引用站内技能 —', message(error))
+      skillIndex = buildIndex([])
+    } finally {
+      skillIndexLoading = null
+    }
+    return skillIndex
+  })()
+
+  return skillIndexLoading
+}
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -110,6 +171,11 @@ function json(data: unknown, status = 200): Response {
 function num(value: string | undefined, fallback: number): number {
   const n = Number(value)
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback
+}
+
+/** 把任意异常转成可读文案（日志用） */
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /** best-effort 每 IP 限流：窗口内请求数超过阈值则拒绝 */
@@ -160,17 +226,37 @@ async function consumeDailyQuota(env: ChatEnv, limit: number): Promise<{ ok: boo
   }
 }
 
-/** 把当前技能信息拼进系统提示 */
-export function buildSystemPrompt(context: ChatContext | undefined): string {
-  if (!context?.title) return SYSTEM_PROMPT
-  const parts = [
-    `用户当前正在浏览技能详情页：`,
-    `- 名称：${context.title.slice(0, 120)}`,
-  ]
-  if (context.category) parts.push(`- 分类：${String(context.category).slice(0, 40)}`)
-  if (context.description) parts.push(`- 说明：${String(context.description).slice(0, MAX_CONTEXT_CHARS)}`)
-  parts.push('', '回答时优先结合这个技能展开。')
-  return `${SYSTEM_PROMPT}\n\n${parts.join('\n')}`
+/**
+ * 把检索到的站内技能与当前页面上下文合并成系统提示。
+ *
+ * 两者都可选，缺任一都不影响另一个。有检索结果时优先级更高——
+ * 用户提问才是真实意图，页面上下文只是「他正在看这条」的补充。
+ */
+export function buildSystemPrompt(context: ChatContext | undefined, hits: SearchHit[] = []): string {
+  const parts: string[] = []
+
+  const found = formatHits(hits)
+  if (found) {
+    parts.push(
+      found,
+      '',
+      '以上是按用户提问的关键词从站内检索出的**部分**相关技能，不是完整清单' +
+        '（站内实际有八千多个）。规则：',
+      '1. 引用技能时只能用上面出现过的名称与路径（/skills/<id>/），不要编造任何其它技能',
+      '2. 如果上面都不合适，就说「这几个不太合适，建议直接在站内搜索 <关键词>」，不要勉强推荐',
+    )
+  }
+
+  if (context?.title) {
+    const ctx: string[] = ['用户当前正在浏览技能详情页：', `- 名称：${context.title.slice(0, 120)}`]
+    if (context.category) ctx.push(`- 分类：${String(context.category).slice(0, 40)}`)
+    if (context.description) ctx.push(`- 说明：${String(context.description).slice(0, MAX_CONTEXT_CHARS)}`)
+    ctx.push('', '回答时优先结合这个技能展开。')
+    parts.push(ctx.join('\n'))
+  }
+
+  if (parts.length === 0) return SYSTEM_PROMPT
+  return `${SYSTEM_PROMPT}\n\n${parts.join('\n\n')}`
 }
 
 /** 校验并裁剪请求体 */
@@ -245,6 +331,23 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
   const model = env.AI_MODEL || 'agnes-3.0-flash'
 
   /*
+   * 检索站内技能：用用户最后一问去匹配，top-K 注入系统提示。
+   * 只取最后一问而非整段对话——多轮里最近一句通常才是当前意图，
+   * 整段拼起来会把旧话题的词带进来污染检索。
+   */
+  const lastQuestion = parsed.messages.at(-1)?.content ?? ''
+  let hits: SearchHit[] = []
+  try {
+    const index = await getSkillIndex(env, new URL(request.url).origin)
+    hits = search(index, lastQuestion, SEARCH_TOP_K)
+    console.log(`[chat] 检索「${lastQuestion.slice(0, 40)}」→ ${hits.length} 条`)
+    if (hits.length > 0) console.log(`[chat] 命中：${hits.map(h => h.id).join(', ')}`)
+  } catch (error) {
+    // 检索失败不能影响对话，降级为「本次不提供站内依据」
+    console.error('[chat] 技能检索失败，本次不注入站内依据 —', message(error))
+  }
+
+  /*
    * 到这里为止的校验都还能返回正常的 HTTP 状态码（403/405/429/400/503）。
    * 一旦开始流式响应，响应头就已发出，后续只能通过 SSE 的 error 事件告知失败。
    */
@@ -259,7 +362,7 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
         temperature: 0.3,
         stream: true,
         messages: [
-          { role: 'system', content: buildSystemPrompt(parsed.context) },
+          { role: 'system', content: buildSystemPrompt(parsed.context, hits) },
           ...parsed.messages,
         ],
       }),

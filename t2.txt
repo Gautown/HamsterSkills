@@ -1,0 +1,30 @@
+npm warn Unknown env config "node-get-windows-binary-host-mirror". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+AggregateError [ETIMEDOUT]: 
+    at internalConnectMultiple (node:net:1135:18)
+    at afterConnectMultiple (node:net:1716:7)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 2a03:2880:f131:83:face:b00c:0:25de:443
+        at createConnectionError (node:net:1679:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1738:38)
+        at listOnTimeout (node:internal/timers:587:11)
+        at process.processTimers (node:internal/timers:521:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '2a03:2880:f131:83:face:b00c:0:25de',
+      port: 443
+    },
+    Error: connect ETIMEDOUT 157.240.3.8:443
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16)
+        at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '157.240.3.8',
+      port: 443
+    }
+  ]
+}
