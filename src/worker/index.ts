@@ -45,12 +45,23 @@ const WORKFLOW_FILE = 'refresh.yml'
 const RATE_LIMIT_WINDOW_MS = 60_000
 const recentHits = new Map<string, number>()
 
+/**
+ * API 响应的安全头。
+ * public/_headers 只作用于静态资产，Worker 自己生成的响应必须单独设置。
+ */
+const API_SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'X-Frame-Options': 'DENY',
+}
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
+      ...API_SECURITY_HEADERS,
     },
   })
 }

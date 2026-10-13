@@ -1,5 +1,33 @@
 # 部署到 Cloudflare Workers（含每日定时同步）
 
+## 安全响应头
+
+分两处配置，缺一不可：
+
+| 范围 | 位置 | 说明 |
+| --- | --- | --- |
+| 静态资产 | `public/_headers` | Cloudflare 原生支持；构建时复制到 `dist/`，切分脚本再分发到 `dist-zh` / `dist-en` |
+| `/api/*` | `src/worker/index.ts`、`src/worker/chat.ts` | `_headers` **不作用于 Worker 自己生成的响应**，必须单独设 |
+
+已配置：`X-Content-Type-Options`、`Referrer-Policy`、`X-Frame-Options`、`Strict-Transport-Security`、`Permissions-Policy`，以及按路径区分的缓存策略（`_astro/*` 长期强缓存、`skills-index.json` 不缓存）。
+
+**没有配置 CSP**：Astro 默认把脚本内联进 HTML，严格 CSP 需要为每个页面算 nonce 或 hash —— 20,000 个静态页面不现实。若将来要加，需配合构建期提取哈希。
+
+## ⚠️ 本地构建必须配 GITHUB_TOKEN
+
+匿名调 GitHub API 只有 **60 次/小时**，而一次全量聚合要访问 300+ 个仓库。撞上限后构建**不会失败**，而是静默产出**更小的站点**（实测可少三成技能），日志里只有一行降级告警。
+
+```powershell
+$env:GITHUB_TOKEN = "你的 PAT"    # 需要公开仓库读权限
+npm run build
+```
+
+CI 里是安全的：`refresh.yml` 显式传了 `secrets.GITHUB_TOKEN`（Actions 自带令牌 1000 次/小时）。只有本地构建会踩这个坑。
+
+### 站点内容会波动
+
+发现结果取 star 前 300 的仓库，排名每轮刷新都会变。掉出前 300 的仓库其技能会随之消失（实测有单仓 200 条的仓库掉出过）。所以两次构建的技能总数天然会有差异，不一定是故障。
+
 ## 架构
 
 ```

@@ -12,7 +12,13 @@ const DIST = path.join(root, 'dist')
 const ZH = path.join(root, 'dist-zh')
 const EN = path.join(root, 'dist-en')
 const LIMIT = Number(process.env.STATIC_ASSET_LIMIT ?? 20000)
-const SHARED = ['_astro', 'favicon.svg', 'og.svg', 'robots.txt', '404.html']
+/**
+ * 两站共用的静态资源。
+ * - _headers：Cloudflare 静态资产的响应头规则（安全头 / 缓存策略）
+ * - logo.svg：英文页同样引用 /logo.svg，dist-en 必须自包含，
+ *   否则一旦路由调整就会 404
+ */
+const SHARED = ['_astro', '_headers', 'favicon.svg', 'logo.svg', 'og.svg', 'robots.txt', '404.html']
 
 if (!fs.existsSync(DIST)) {
   console.error('✗ 未找到 dist/，请先运行 npm run build')

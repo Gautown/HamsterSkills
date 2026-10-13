@@ -98,8 +98,11 @@ function json(data: unknown, status = 200): Response {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
-      // 允许英文站（同源，无需跨域）；这里只允许本站，避免被第三方页面盗用
+      // 与静态资产的 _headers 保持一致的最小安全集。
+      // 聊天端点不应被任何页面内嵌，也不该泄露访问来源。
       'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+      'X-Frame-Options': 'DENY',
     },
   })
 }
