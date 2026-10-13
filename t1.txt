@@ -1,4 +1,0 @@
-
- ⛅️ wrangler 4.149.0
-────────────────────
-Successfully created tail, expires at 2026-10-13T10:27:51Z
