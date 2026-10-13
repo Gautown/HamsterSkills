@@ -99,7 +99,17 @@ const strings = {
 </div>
 </div>
 
-<style>
+<!--
+  is:global —— 整个聊天窗是全局的。
+  Astro 默认给每个选择器追加 data-astro-cid-* 作用域属性，而聊天窗里
+  绝大多数节点是脚本 createElement / innerHTML 造出来的，永远不会有该属性：
+  作用域规则 .chat-bubble[data-astro-cid-x] 一条都匹配不上，气泡会退化成
+  无背景、无边框、无内边距的裸文本（错误气泡连红色都没有）。
+
+  块内 61 个选择器全部以 chat- / #chat- 前缀，没有一个裸元素或 .chat 之外的
+  通用类，因此放开作用域不会影响站内其它组件。
+-->
+<style is:global>
   /*
     右边缘垂直居中。
     - right: 0 让按钮半贴边（translateX 50% 会让一半出屏，所以不这么做）
@@ -303,6 +313,126 @@ const strings = {
     background: rgba(229, 72, 77, 0.08);
   }
 
+  /* ---------- 气泡内的 Markdown ---------- */
+
+  /*
+   * .chat-bubble 的 white-space: pre-wrap 是为纯文本气泡准备的。
+   * Markdown 渲染后子元素变成块级（p / ul / pre…），pre-wrap 会在它们之间
+   * 再插一层空白，看起来像双倍行距，所以这里必须换回 normal，
+   * 换行改由 marked 的 breaks（单换行出 <br>）负责。
+   */
+  .chat-bubble-md {
+    white-space: normal;
+  }
+
+  /* 气泡自带 padding，段落的上下外边距要收掉，否则每段都多出一截 */
+  .chat-bubble-md > :first-child {
+    margin-top: 0;
+  }
+  .chat-bubble-md > :last-child {
+    margin-bottom: 0;
+  }
+
+  .chat-bubble-md p {
+    margin: 0 0 6px;
+  }
+
+  .chat-bubble-md ul,
+  .chat-bubble-md ol {
+    margin: 0 0 6px;
+    padding-left: 20px;
+  }
+
+  .chat-bubble-md li {
+    margin: 0 0 2px;
+  }
+
+  .chat-bubble-md li > ul,
+  .chat-bubble-md li > ol {
+    margin: 2px 0 0;
+  }
+
+  .chat-bubble-md a {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+
+  .chat-bubble-md code {
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(127, 127, 127, 0.16);
+    font-family: 'Cascadia Code', Consolas, 'Courier New', monospace;
+    font-size: 0.92em;
+  }
+
+  /*
+   * 代码块必须能横向滚动。气泡有 max-width: 88%，
+   * 一行长代码若不滚会把整个面板撑破（overflow-wrap: anywhere 会把代码折断）。
+   */
+  .chat-bubble-md pre {
+    margin: 0 0 6px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(127, 127, 127, 0.14);
+    overflow-x: auto;
+    overflow-wrap: normal;
+  }
+
+  .chat-bubble-md pre code {
+    padding: 0;
+    background: none;
+    font-size: 0.92em;
+  }
+
+  .chat-bubble-md blockquote {
+    margin: 0 0 6px;
+    padding-left: 9px;
+    border-left: 3px solid var(--line);
+    color: var(--muted);
+  }
+
+  .chat-bubble-md h1,
+  .chat-bubble-md h2,
+  .chat-bubble-md h3,
+  .chat-bubble-md h4,
+  .chat-bubble-md h5,
+  .chat-bubble-md h6 {
+    margin: 8px 0 4px;
+    font-size: 1.04em;
+    line-height: 1.4;
+  }
+
+  .chat-bubble-md hr {
+    margin: 8px 0;
+    border: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  /*
+   * 表格用 display:block 换行滚动：
+   * 助手偶尔会吐出宽表格，直接铺开会把气泡顶得比面板还宽。
+   */
+  .chat-bubble-md table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 0 0 6px;
+    border-collapse: collapse;
+  }
+
+  .chat-bubble-md th,
+  .chat-bubble-md td {
+    padding: 3px 7px;
+    border: 1px solid var(--line);
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .chat-bubble-md th {
+    background: rgba(127, 127, 127, 0.12);
+    font-weight: 600;
+  }
+
   /* ---------- 输入区 ---------- */
 
   .chat-input-row {
@@ -476,6 +606,76 @@ const strings = {
     const strings = JSON.parse(root.dataset.strings ?? '{}') as ChatStrings
     const skill = root.dataset.skill ? (JSON.parse(root.dataset.skill) as SkillContext) : null
 
+    /**
+     * Markdown 渲染器按需加载。
+     *
+     * 聊天窗挂在全站每一页上，而绝大多数访客从不点开它。marked 加渲染器
+     * 约 40KB，静态 import 会让每页首屏都背上这份成本；动态 import 拆成独立
+     * chunk，只在真的发消息时才拉，首屏字节数不变。
+     */
+    type MarkdownRenderer = (text: string) => string
+    /** 加载失败时的兜底：仍然转义，只是丢掉 Markdown 语法，聊天气泡不会因此不可用 */
+    const escapeOnly: MarkdownRenderer = (text) =>
+      text.replace(
+        /[&<>"']/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!
+      )
+    let renderer: MarkdownRenderer | null = null
+    let rendererLoading: Promise<MarkdownRenderer> | null = null
+
+    function loadRenderer(): Promise<MarkdownRenderer> {
+      if (renderer) return Promise.resolve(renderer)
+      rendererLoading ??= import('../lib/chat-markdown.mjs')
+        .then((m) => m.renderChatMarkdown)
+        .catch(() => escapeOnly)
+        .then((fn) => (renderer = fn))
+      return rendererLoading
+    }
+
+    /**
+     * 流式回复的绘制器。
+     *
+     * 模型每秒吐 30~60 个 delta，逐帧重解析整段 Markdown 会反复重排日志区，
+     * 肉眼看就是气泡高度抖动。80ms 节流看不出来，却能把重绘压到 1/6。
+     * flush 会在流结束时补一次同步重绘，保证末尾内容一定落到 DOM。
+     */
+    function makeStreamPainter(el: HTMLElement) {
+      let latest = ''
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let pending: Promise<MarkdownRenderer> | null = null
+
+      function paint() {
+        timer = undefined
+        // 复用同一个 Promise；latest 在 then 里才读，期间到达的 delta 会被一并带上
+        pending ??= loadRenderer()
+        void pending.then((fn) => {
+          el.innerHTML = fn(latest)
+        })
+      }
+
+      return {
+        push(text: string) {
+          latest = text
+          el.classList.add('chat-bubble-md')
+          timer ??= setTimeout(paint, 80)
+        },
+        async flush() {
+          if (timer !== undefined) {
+            clearTimeout(timer)
+            timer = undefined
+          }
+          el.innerHTML = (await loadRenderer())(latest)
+        },
+        /** 气泡被丢弃（出错或空回复）时撤掉待触发的重绘，避免往已移除的节点上写 */
+        discard() {
+          if (timer !== undefined) {
+            clearTimeout(timer)
+            timer = undefined
+          }
+        },
+      }
+    }
+
     /** 送往后端的对话历史（只保留 user/assistant，不含系统提示） */
     const history: Array<{ role: 'user' | 'assistant'; content: string }> = []
     let busy = false
@@ -543,11 +743,14 @@ const strings = {
       // 「思考中」占位：收到第一个 delta 后被同一个气泡替换
       const pending = addBubble(strings.thinking, 'bot')
       pending.classList.add('chat-dots')
-      // 真正承载回复的气泡，与 pending 同位置，靠切换 display 复用
-      const target = document.createElement('p')
+      // 真正承载回复的气泡，与 pending 同位置，靠切换 display 复用。
+      // 用 div 而非 p：回复是 Markdown，会渲染出 ul / pre / table 等块级元素，
+      // 塞进 <p> 是无效内容模型（p 只允许 phrasing content）。
+      const target = document.createElement('div')
       target.className = 'chat-bubble chat-bubble-bot'
       target.hidden = true
       pending.after(target)
+      const painter = makeStreamPainter(target)
 
       let reply = ''
       let failed = false
@@ -603,7 +806,7 @@ const strings = {
 
             if (event.type === 'delta' && event.text) {
               reply += event.text
-              target.textContent = reply
+              painter.push(reply)
               scrollToEnd()
             } else if (event.type === 'error') {
               throw new Error(event.message ?? strings.errorGeneric)
@@ -611,9 +814,13 @@ const strings = {
           }
         }
 
+        // 收尾必须同步补一次：节流窗口内的最后几十个字符还没落到 DOM
+        await painter.flush()
+
         if (!reply) {
           // 流正常结束但一个字都没有：模型返回了空内容
           failed = true
+          painter.discard()
           target.remove()
           addBubble(strings.errorGeneric, 'error')
         } else {
@@ -621,6 +828,7 @@ const strings = {
         }
       } catch (error) {
         failed = true
+        painter.discard()
         pending.remove()
         target.remove()
         addBubble(error instanceof Error ? error.message : strings.errorGeneric, 'error')

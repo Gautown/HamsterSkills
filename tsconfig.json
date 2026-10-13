@@ -1,5 +1,8 @@
 {
   "extends": "astro/tsconfigs/base",
   "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist"]
+  // dist-* 是 npm run split 产出的双站目录，同样是构建产物。
+  // 不排除的话 astro check 会去扫压缩过的 _astro chunk，把 minifier
+  // 抹掉的变量名报成「声明未使用」，噪声会随 chunk 体积漂移。
+  "exclude": ["dist", "dist-zh", "dist-en"]
 }
