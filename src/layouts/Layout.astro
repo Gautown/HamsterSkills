@@ -2,6 +2,7 @@
 import '../styles/global.css'
 import Header from '../components/Header.astro'
 import Footer from '../components/Footer.astro'
+import ChatWidget from '../components/ChatWidget.astro'
 import { T, type Locale } from '../i18n/translations'
 
 interface Props {
@@ -11,9 +12,19 @@ interface Props {
   description?: string
   /** 该页面的站点内路径（如 /skills/pdf），用于拼 canonical 与 og:url */
   path?: string
+  /**
+   * 当前页面的技能信息。仅技能详情页传入，
+   * 聊天窗会把它作为上下文发给后端，让回答能结合这条技能展开。
+   */
+  skill?: {
+    id: string
+    title: string
+    category?: string
+    description?: string
+  }
 }
 
-const { lang, title, description, path } = Astro.props
+const { lang, title, description, path, skill } = Astro.props
 const t = T[lang]
 
 /*
@@ -65,5 +76,7 @@ const ogImage = new URL('/og.svg', SITE_ORIGIN).href
       <slot />
     </main>
     <Footer />
+    {/* 全站聊天窗：固定在视口右边缘、垂直居中 */}
+    <ChatWidget lang={lang} skill={skill} />
   </body>
 </html>

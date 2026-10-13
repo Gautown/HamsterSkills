@@ -18,8 +18,21 @@
   },
   // 仓库标识：Worker 用它触发本仓库的 Actions 工作流（需与实际仓库一致）
   "vars": {
-    "GITHUB_REPO": "Gautown/HamsterSkills"
+    "GITHUB_REPO": "Gautown/HamsterSkills",
+    // 聊天端点用（AI_API_KEY 走 secret，不在 vars 里）
+    "AI_API_BASE": "https://api.agnes-ai.cn/v1",
+    "AI_MODEL": "agnes-3.0-flash",
+    // 双重限额：每 IP 每分钟最多 N 条，全站每天最多 M 条
+    "CHAT_RATE_LIMIT": "3",
+    "CHAT_DAILY_LIMIT": "500"
   },
+  // 全站每日聊天额度计数器（KV 免费额度：10 万读/天、1000 写/天，500 条/天远在限额内）
+  "kv_namespaces": [
+    {
+      "binding": "CHAT_QUOTA",
+      "id": "4a8aabdd830f4a28b1cfaf12b00e77ad"
+    }
+  ],
   "observability": {
     "enabled": true
   },

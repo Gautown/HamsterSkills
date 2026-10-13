@@ -1,0 +1,610 @@
+---
+/**
+ * 全站聊天窗。
+ *
+ * 位置：固定在视口右边缘、垂直居中（top: 50% + translateY(-50%)），
+ * 面板向左展开，避开页面主体的阅读区。
+ *
+ * 为什么必须走后端：站点全静态，AI_API_KEY 若出现在前端 JS 里，
+ * 任何人查看源代码即可拿走。所以浏览器只与本站 /api/chat 通信，
+ * 由 Worker 持密钥调用 LLM。
+ *
+ * 当前页面的技能上下文（若有）会随请求一起发往 Worker，
+ * 让回答能结合用户正在看的那条技能展开。
+ */
+import { T } from '../i18n/translations'
+import type { Locale } from '../i18n/translations'
+
+interface Props {
+  lang: Locale
+  /** 当前页面的技能信息；非技能详情页为 undefined */
+  skill?: {
+    id: string
+    title: string
+    category?: string
+    description?: string
+  }
+}
+
+const { lang, skill } = Astro.props
+const t = T[lang]
+
+// 语言包以 JSON 形式注入，避免在 DOM 里堆一堆 data-* 属性
+const strings = {
+  title: t.chatTitle,
+  placeholder: t.chatPlaceholder,
+  send: t.chatSend,
+  thinking: t.chatThinking,
+  greeting: t.chatGreeting,
+  errorGeneric: t.chatErrorGeneric,
+  quotaLeft: t.chatQuotaLeft,
+  contextBadge: t.chatContextBadge,
+  open: t.chatOpen,
+  close: t.chatClose,
+}
+---
+
+<!--
+  外层 .chat-widget 只承担数据传递：文案包与当前技能上下文放在 data-* 上，
+  供下方脚本读取。内层 .chat-dock 才是定位与交互的容器。
+-->
+<div
+  class="chat-widget"
+  data-strings={JSON.stringify(strings)}
+  data-skill={skill ? JSON.stringify(skill) : undefined}
+>
+<div class="chat-dock" id="chat-dock" data-open="false">
+  <div class="chat-panel" id="chat-panel" role="dialog" aria-modal="false" aria-labelledby="chat-title" hidden>
+    <div class="chat-head">
+      <div class="chat-head-text">
+        <h2 class="chat-title" id="chat-title">{strings.title}</h2>
+        <span class="chat-model">agnes-3.0-flash</span>
+      </div>
+      <button class="chat-icon-btn" type="button" id="chat-close" aria-label={strings.close}>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" /></svg>
+      </button>
+    </div>
+
+    {skill && (
+      <p class="chat-context" id="chat-context">
+        {strings.contextBadge.replace('{title}', skill.title.slice(0, 40))}
+      </p>
+    )}
+
+    <div class="chat-log" id="chat-log" aria-live="polite">
+      <p class="chat-bubble chat-bubble-bot">{strings.greeting}</p>
+    </div>
+
+    <form class="chat-input-row" id="chat-form">
+      <textarea
+        class="chat-input"
+        id="chat-input"
+        rows="1"
+        placeholder={strings.placeholder}
+        maxlength="2000"
+      ></textarea>
+      <button class="chat-send" type="submit" id="chat-send" aria-label={strings.send}>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10l14-7-5 7 5 7z" /></svg>
+      </button>
+    </form>
+    <p class="chat-quota" id="chat-quota" hidden></p>
+  </div>
+
+  <button class="chat-launcher" type="button" id="chat-launcher" aria-label={strings.open} aria-expanded="false">
+    <svg class="chat-icon-open" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21 11.5a8.5 8.5 0 01-8.5 8.5c-1.2 0-2.4-.25-3.5-.7L4 21l1.7-4.6A8.5 8.5 0 1121 11.5z" />
+    </svg>
+    <svg class="chat-icon-close" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  </button>
+</div>
+</div>
+
+<style>
+  /*
+    右边缘垂直居中。
+    - right: 0 让按钮半贴边（translateX 50% 会让一半出屏，所以不这么做）
+    - top: 50% + translateY(-50%) 让「按钮 + 面板」整体垂直居中
+    - z-index 高于导航栏，避免被吸顶导航遮挡
+    面板向左展开（right: 100%），不覆盖按钮本身
+  */
+  .chat-dock {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+  }
+
+  /* ---------- 悬浮按钮 ---------- */
+
+  .chat-launcher {
+    width: 46px;
+    height: 46px;
+    margin-right: 10px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    box-shadow: var(--shadow-4);
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      border-color 0.18s ease;
+  }
+
+  .chat-launcher:hover {
+    transform: scale(1.06);
+    border-color: var(--accent);
+  }
+
+  .chat-launcher:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+
+  .chat-launcher svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* 两个图标交叉淡入淡出，展开/收起时不用换 DOM */
+  .chat-icon-close {
+    display: none;
+  }
+
+  .chat-dock[data-open='true'] .chat-icon-open {
+    display: none;
+  }
+
+  .chat-dock[data-open='true'] .chat-icon-close {
+    display: block;
+  }
+
+  /* ---------- 面板 ---------- */
+
+  .chat-panel {
+    width: 340px;
+    max-width: calc(100vw - 76px);
+    /* 向左展开，露出右侧的悬浮按钮 */
+    margin-right: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .chat-panel[hidden] {
+    display: none;
+  }
+
+  .chat-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .chat-head-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .chat-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  /* 模型名：让用户明确知道在跟哪个模型对话 */
+  .chat-model {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .chat-icon-btn {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+
+  .chat-icon-btn:hover {
+    background: var(--surface-2, rgba(0, 0, 0, 0.04));
+    color: var(--text);
+  }
+
+  .chat-icon-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+  }
+
+  .chat-context {
+    margin: 0;
+    padding: 7px 14px;
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--accent-soft, rgba(56, 132, 255, 0.08));
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---------- 消息区 ---------- */
+
+  .chat-log {
+    flex: 1;
+    min-height: 220px;
+    max-height: 46vh;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .chat-bubble {
+    margin: 0;
+    padding: 8px 11px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 88%;
+    /* 模型偶尔会输出较长内容，避免长串把气泡撑破 */
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .chat-bubble-bot {
+    align-self: flex-start;
+    background: var(--surface-2, rgba(0, 0, 0, 0.04));
+    border: 1px solid var(--line);
+  }
+
+  .chat-bubble-user {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .chat-bubble-error {
+    align-self: flex-start;
+    border: 1px solid #e5484d;
+    color: #e5484d;
+    background: rgba(229, 72, 77, 0.08);
+  }
+
+  /* ---------- 输入区 ---------- */
+
+  .chat-input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .chat-input {
+    flex: 1;
+    min-width: 0;
+    /* 最多 5 行，超出则内部滚动 */
+    max-height: 96px;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: none;
+  }
+
+  .chat-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .chat-send {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+
+  .chat-send:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .chat-send svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linejoin: round;
+  }
+
+  .chat-quota {
+    margin: 0;
+    padding: 0 12px 9px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .chat-quota[hidden] {
+    display: none;
+  }
+
+  /* 等待模型回复时的三点动画 */
+  .chat-dots::after {
+    content: '…';
+    animation: chat-blink 1.2s steps(4, end) infinite;
+  }
+
+  @keyframes chat-blink {
+    0%,
+    20% {
+      content: '';
+    }
+    40% {
+      content: '.';
+    }
+    60% {
+      content: '..';
+    }
+    80%,
+    100% {
+      content: '...';
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-launcher,
+    .chat-dots::after {
+      transition: none;
+      animation: none;
+    }
+  }
+
+  /*
+    窄屏：面板改为占满可用宽度并垂直居中。
+    右边缘锚点在窄屏会挡住内容，且 340px 面板在 375px 屏上几乎贴满左边。
+  */
+  @media (max-width: 560px) {
+    .chat-dock {
+      top: auto;
+      bottom: 16px;
+      transform: none;
+      flex-direction: column-reverse;
+      align-items: flex-end;
+    }
+
+    .chat-launcher {
+      margin-right: 14px;
+    }
+
+    .chat-panel {
+      margin: 0 14px 12px 0;
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+
+    .chat-log {
+      max-height: 52vh;
+    }
+  }
+
+  /* 打印时隐藏，避免出现在打印出来的纸上 */
+  @media print {
+    .chat-dock {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  /**
+   * 聊天窗交互。
+   *
+   * 用 data 属性与 CSS 协作：展开/收起只切 data-open，
+   * 图标交叉淡入、面板显隐都由 CSS 完成，JS 不碰样式细节。
+   */
+  interface ChatStrings {
+    title: string
+    placeholder: string
+    send: string
+    thinking: string
+    greeting: string
+    errorGeneric: string
+    quotaLeft: string
+    contextBadge: string
+    open: string
+    close: string
+  }
+
+  interface ApiReply {
+    reply?: string
+    error?: string
+    dailyUsed?: number
+    dailyLimit?: number
+  }
+
+  interface SkillContext {
+    id: string
+    title: string
+    category?: string
+    description?: string
+  }
+
+  function bootChat(root: HTMLElement) {
+    const dock = root.querySelector<HTMLElement>('#chat-dock')
+    const panel = root.querySelector<HTMLElement>('#chat-panel')
+    const launcher = root.querySelector<HTMLButtonElement>('#chat-launcher')
+    const closeBtn = root.querySelector<HTMLButtonElement>('#chat-close')
+    const form = root.querySelector<HTMLFormElement>('#chat-form')
+    const input = root.querySelector<HTMLTextAreaElement>('#chat-input')
+    const sendBtn = root.querySelector<HTMLButtonElement>('#chat-send')
+    const log = root.querySelector<HTMLElement>('#chat-log')
+    const quota = root.querySelector<HTMLElement>('#chat-quota')
+    if (!dock || !panel || !launcher || !form || !input || !sendBtn || !log) return
+
+    const strings = JSON.parse(root.dataset.strings ?? '{}') as ChatStrings
+    const skill = root.dataset.skill ? (JSON.parse(root.dataset.skill) as SkillContext) : null
+
+    /** 送往后端的对话历史（只保留 user/assistant，不含系统提示） */
+    const history: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    let busy = false
+
+    const isOpen = () => dock.dataset.open === 'true'
+
+    function setOpen(open: boolean) {
+      dock.dataset.open = String(open)
+      panel.hidden = !open
+      launcher.setAttribute('aria-expanded', String(open))
+      if (open) {
+        input.focus()
+      } else {
+        launcher.focus()
+      }
+    }
+
+    function scrollToEnd() {
+      log.scrollTop = log.scrollHeight
+    }
+
+    function addBubble(text: string, kind: 'user' | 'bot' | 'error'): HTMLElement {
+      const p = document.createElement('p')
+      p.className = `chat-bubble chat-bubble-${kind}`
+      p.textContent = text
+      log.appendChild(p)
+      scrollToEnd()
+      return p
+    }
+
+    function showQuota(used?: number, limit?: number) {
+      if (!quota || typeof used !== 'number' || typeof limit !== 'number') return
+      const left = Math.max(0, limit - used)
+      quota.textContent = strings.quotaLeft.replace('{n}', String(left))
+      quota.hidden = false
+    }
+
+    /** 输入框随内容增高，到 5 行封顶后改为内部滚动 */
+    function autoGrow() {
+      input.style.height = 'auto'
+      input.style.height = `${Math.min(input.scrollHeight, 96)}px`
+    }
+
+    async function send() {
+      const content = input.value.trim()
+      if (!content || busy) return
+
+      busy = true
+      sendBtn.disabled = true
+      input.value = ''
+      autoGrow()
+      addBubble(content, 'user')
+      history.push({ role: 'user', content })
+
+      const pending = addBubble(strings.thinking, 'bot')
+      pending.classList.add('chat-dots')
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            // 后端会校验条数与长度，这里只做最基本的裁剪
+            messages: history.slice(-20),
+            context: skill ?? undefined,
+          }),
+        })
+        const data = (await res.json()) as ApiReply
+        pending.remove()
+
+        if (!res.ok || data.error) {
+          addBubble(data.error || strings.errorGeneric, 'error')
+          // 额度类错误不该让用户反复重试，清掉历史避免继续累积
+          if (res.status === 429) history.length = 0
+          return
+        }
+
+        const reply = data.reply ?? ''
+        addBubble(reply, 'bot')
+        history.push({ role: 'assistant', content: reply })
+        showQuota(data.dailyUsed, data.dailyLimit)
+      } catch {
+        pending.remove()
+        addBubble(strings.errorGeneric, 'error')
+      } finally {
+        busy = false
+        sendBtn.disabled = false
+        input.focus()
+      }
+    }
+
+    launcher.addEventListener('click', () => setOpen(!isOpen()))
+    closeBtn?.addEventListener('click', () => setOpen(false))
+
+    form.addEventListener('submit', event => {
+      event.preventDefault()
+      void send()
+    })
+
+    // Enter 发送、Shift+Enter 换行
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault()
+        void send()
+      }
+    })
+    input.addEventListener('input', autoGrow)
+
+    // Esc 收起面板
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && isOpen()) setOpen(false)
+    })
+
+    setOpen(false)
+  }
+
+  document.querySelectorAll<HTMLElement>('.chat-widget').forEach(bootChat)
+</script>

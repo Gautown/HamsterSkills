@@ -4,18 +4,30 @@
  * - Cron Trigger：每日触发 GitHub Actions 的 refresh 工作流（同步 GitHub → 构建 → 部署）
  * - POST /api/refresh：手动触发（需 Bearer REFRESH_SECRET，带频率限制）
  * - GET  /api/refresh-status：查询最近一次刷新工作流状态
+ * - POST /api/chat：站内聊天窗的后端代理（见 chat.ts）
  *
  * 所需 Secrets（wrangler secret put）：
  *   GITHUB_TOKEN    具有 workflow 权限的 PAT（触发 Actions 用）
  *   REFRESH_SECRET  手动刷新端点的共享密钥
+ *   AI_API_KEY      聊天端点调用 LLM 用（绝不能进前端代码）
  * Vars（wrangler.jsonc）：
  *   GITHUB_REPO     形如 owner/repo
+ *   AI_API_BASE / AI_MODEL / CHAT_RATE_LIMIT / CHAT_DAILY_LIMIT
  */
+import { handleChat } from './chat'
+import type { KvNamespace } from './chat'
+
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> }
   GITHUB_REPO?: string
   GITHUB_TOKEN?: string
   REFRESH_SECRET?: string
+  AI_API_BASE?: string
+  AI_MODEL?: string
+  AI_API_KEY?: string
+  CHAT_RATE_LIMIT?: string
+  CHAT_DAILY_LIMIT?: string
+  CHAT_QUOTA?: KvNamespace
 }
 
 interface Ctx {
@@ -111,6 +123,7 @@ export default {
       return dispatchRefresh(env, 'manual')
     }
     if (pathname === '/api/refresh-status') return refreshStatus(env)
+    if (pathname === '/api/chat') return handleChat(request, env)
     return env.ASSETS.fetch(request)
   },
 
