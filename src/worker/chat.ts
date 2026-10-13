@@ -38,6 +38,14 @@ export interface KvNamespace {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>
 }
 
+/** 消息与上下文的硬上限，导出便于测试断言 */
+export const LIMITS = {
+  MAX_MESSAGE_CHARS,
+  MAX_HISTORY,
+  MAX_CONTEXT_CHARS,
+  MAX_TOKENS,
+} as const
+
 export interface ChatEnv {
   AI_API_BASE?: string
   AI_MODEL?: string
@@ -92,7 +100,7 @@ function num(value: string | undefined, fallback: number): number {
 }
 
 /** best-effort 每 IP 限流：窗口内请求数超过阈值则拒绝 */
-function rateLimited(ip: string, limit: number): boolean {
+export function rateLimited(ip: string, limit: number): boolean {
   const now = Date.now()
   const hits = (recentHits.get(ip) ?? []).filter(t => now - t < RATE_WINDOW_MS)
   if (hits.length >= limit) {
@@ -107,7 +115,7 @@ function rateLimited(ip: string, limit: number): boolean {
 }
 
 /** UTC 日期分键，便于次日自动归零 */
-function dailyKey(now = new Date()): string {
+export function dailyKey(now = new Date()): string {
   return now.toISOString().slice(0, 10)
 }
 
@@ -140,7 +148,7 @@ async function consumeDailyQuota(env: ChatEnv, limit: number): Promise<{ ok: boo
 }
 
 /** 把当前技能信息拼进系统提示 */
-function buildSystemPrompt(context: ChatContext | undefined): string {
+export function buildSystemPrompt(context: ChatContext | undefined): string {
   if (!context?.title) return SYSTEM_PROMPT
   const parts = [
     `用户当前正在浏览技能详情页：`,
@@ -153,7 +161,7 @@ function buildSystemPrompt(context: ChatContext | undefined): string {
 }
 
 /** 校验并裁剪请求体 */
-function normalize(input: unknown): ChatRequest | { error: string } {
+export function normalize(input: unknown): ChatRequest | { error: string } {
   if (!input || typeof input !== 'object') return { error: '请求体格式错误' }
   const body = input as Record<string, unknown>
   const raw = body.messages
@@ -198,12 +206,12 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
     return json({ error: '发送太快了，请稍等一下再试' }, 429)
   }
 
-  const dailyLimit = num(env.CHAT_DAILY_LIMIT, 500)
-  const quota = await consumeDailyQuota(env, dailyLimit)
-  if (!quota.ok) {
-    return json({ error: '今日提问额度已用完，明天再来吧' }, 429)
-  }
-
+  /*
+   * 先解析并校验请求体，再扣每日额度。
+   * 顺序很重要：畸形请求（坏 JSON、空内容、超长）根本不会调用模型，
+   * 不该占用全站额度——否则一个坏客户端或探测程序就能用垃圾请求
+   * 把当天的额度耗光。每 IP 限流已经挡住了这类洪泛。
+   */
   let input: unknown
   try {
     input = await request.json()
@@ -213,6 +221,12 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
 
   const parsed = normalize(input)
   if ('error' in parsed) return json({ error: parsed.error }, 400)
+
+  const dailyLimit = num(env.CHAT_DAILY_LIMIT, 500)
+  const quota = await consumeDailyQuota(env, dailyLimit)
+  if (!quota.ok) {
+    return json({ error: '今日提问额度已用完，明天再来吧' }, 429)
+  }
 
   const apiBase = (env.AI_API_BASE || 'https://api.agnes-ai.cn/v1').replace(/\/+$/, '')
   const model = env.AI_MODEL || 'agnes-3.0-flash'
