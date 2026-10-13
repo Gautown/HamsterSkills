@@ -7,6 +7,10 @@ dist-en/
 .wrangler/
 data/
 
+# 临时输出：wrangler tail 的日志、构建日志等，别误提交
+t*.txt
+*.log
+
 # 环境变量（可能含 GITHUB_TOKEN）
 .env
 .env.*
