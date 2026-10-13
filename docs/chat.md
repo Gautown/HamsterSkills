@@ -31,6 +31,8 @@
 
 交互细节：Enter 发送 / Shift+Enter 换行 / 输入框随内容增高至 5 行封顶 /「思考中」三点动画（收到首个 delta 后被真实内容气泡替换）/ Esc 收起。
 
+助手回复按 Markdown 渲染（见下文「回复的 Markdown 渲染」），气泡容器是 `<div>` 而非 `<p>` —— 回复会渲染出 `ul` / `pre` / `table` 等块级元素，`<p>` 只允许 phrasing content。
+
 额度被拒绝（429）时才丢弃对话历史 —— 配额是全局的、短期内不会恢复；网络抖动或模型异常则保留历史，用户很可能只是想让模型把刚才那句答完。
 
 无障碍：`aria-expanded` 随展开状态同步、`aria-live="polite"`、两个图标交叉淡入淡出（不换 DOM）。
@@ -145,20 +147,80 @@ npx wrangler secret put AI_API_KEY --config wrangler.zh.jsonc
 
 **未配置 `AI_API_KEY` 时端点返回 503「聊天功能尚未配置」**，聊天窗会显示该提示 —— 不会静默失败。
 
+## 回复的 Markdown 渲染
+
+助手回复以 Markdown 渲染（`src/lib/chat-markdown.mjs` 的 `renderChatMarkdown`），
+支持粗体 / 斜体 / 删除线 / 行内码 / 列表 / 有序表 / 引用 / 表格 / 代码块，
+并把裸 `/skills/<id>/` 变成可点链接 —— `formatHits` 给模型的就是裸路径，
+模型会照抄。
+
+**用户气泡仍是纯文本**（`textContent`）：用户输入不需要排版，
+也让用户消息无法注入 HTML。
+
+### 为什么模型输出不能直接当 HTML
+
+模型输出进 `innerHTML` 等于变成可执行 HTML，而模型是可被提问诱导的**不可信输入**。
+三条防线，缺一条都能被绕过：
+
+1. **原始 HTML 转义** —— 覆盖 `<img onerror>`、`<svg onload>`、`<iframe>`、`<script>`
+2. **链接协议白名单** —— 挡 `javascript:` / `data:` / `vbscript:` / `file:`。
+   校验前**先剥控制字符**，否则 `java\nscript:alert(1)` 在真实浏览器里是可执行的
+   （浏览器解析 URL 时会丢掉 TAB/LF/CR）
+3. **图片整体禁用** —— 远端图会把访客 IP 泄露给图床，只保留 alt 文本
+
+危险协议降级为纯文字而非删除，用户仍看得懂模型说了什么。
+
+### 为什么不用「先整体转义再交给 marked」
+
+那样 `&` `<` `>` 全变实体，会把 `> 引用` 直接打死成普通段落（实测输出 `&gt; 引用`）。
+必须改写 `renderer` 才能既保留 Markdown 语法又堵住注入。
+
+覆盖 `text` renderer 时还要注意：渲染链接文案期间要关闭链接化，
+否则 `[/skills/a/](https://x)` 会产出 `<a>` 套 `<a>`，浏览器会把内层标签拆出外层。
+
+### 懒加载
+
+渲染器约 43KB。聊天窗挂在全站每一页，而绝大多数访客从不点开它，
+所以用动态 `import()` 拆成独立 chunk，**首屏新增字节数 = 0**，
+只在真的发出第一条消息时才拉。
+
+### 流式渲染节流
+
+模型每秒吐 30~60 个 delta，逐帧重解析整段 Markdown 会反复重排日志区，
+肉眼看是气泡高度抖动。节流到 80ms，并在流结束时同步补一次重绘，
+保证末尾内容一定落到 DOM。
+
+## 样式作用域的坑
+
+`<style is:global>` —— **整个聊天窗是全局的**，这不是偷懒而是必需：
+
+Astro 默认给 `<style>` 里每个选择器追加 `data-astro-cid-*`，
+而聊天窗绝大多数节点是脚本 `createElement` / `innerHTML` 造的，
+永远不会有该属性。规则 `.chat-bubble[data-astro-cid-x]` 一条都匹配不上，
+气泡会退化成无背景、无边框、无内边距的裸文本（错误气泡连红色都没有）。
+
+块内 61 个选择器全部以 `chat-` / `#chat-` 前缀，无一裸元素或通用类，
+放开作用域不影响站内其它组件。加新样式时务必保持这个前缀约定。
+
 ## 测试
 
 ```bash
-node --test scripts/chat.test.mjs    # 43 个用例
-npm test                            # 全量 68 个
+node --test scripts/chat.test.mjs           # 46 个用例
+node --test scripts/chat-markdown.test.mjs  # 19 个用例
+npm test                                    # 全量 137 个
 ```
 
 不需要真实密钥：LLM 调用通过替换 `globalThis.fetch` 模拟，KV 用内存 Map 替身。
 
 覆盖：入参校验（长度/条数/角色/空内容）、上下文裁剪、限流窗口、每日额度累加与耗尽、畸形请求不扣额度、KV 故障降级、LLM 各错误分支、密钥不出现在请求体中。
 
+Markdown 渲染的 XSS 用例用**标签白名单**判定而非字符串黑名单 ——
+黑名单会把已转义文本里的 `onerror=` 字面量误报成危险，误报多了就没人看了。
+
 ## 安全要点
 
 - `AI_API_KEY` 只存在于 Worker secret，不进 `vars`、不进仓库、不进任何构建产物
 - 前端只与本站 `/api/chat` 通信；响应带 `X-Content-Type-Options: nosniff` 与 `Cache-Control: no-store`
-- 消息气泡用 `textContent` 渲染，模型输出不会被当作 HTML 执行
+- 助手回复经 `chat-markdown.mjs` 转义后渲染，原始 HTML、危险协议链接、远程图片三条通道全部封堵（见上）
+- 用户气泡用 `textContent` 渲染，不接受任何标记
 - 第三方技能正文里可能自带示例密钥（如某图片生成技能的 README 写了 `API_KEY = "sk-xxx"`），那是上游仓库的公开内容，不是本站密钥，扫描时需区分

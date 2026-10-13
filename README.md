@@ -55,7 +55,7 @@ npm run build                 # 再构建一次，让 AI 分类当次生效
 | --- | --- |
 | [docs/classify.md](docs/classify.md) | 规则层分类：10 个分类的判定链路与调参 |
 | [docs/ai-classify.md](docs/ai-classify.md) | AI 层分类、记忆库、成本与速率限制处理 |
-| [docs/chat.md](docs/chat.md) | 全站聊天窗：SSE 协议、双重限额、上下文注入 |
+| [docs/chat.md](docs/chat.md) | 全站聊天窗：SSE 协议、双重限额、上下文注入、回复的 Markdown 渲染与 XSS 防线 |
 | [docs/comments.md](docs/comments.md) | Giscus 评论接入 |
 | [docs/deploy-cloudflare.md](docs/deploy-cloudflare.md) | 部署与双 Worker 拆分 |
 | [docs/setup-cloudflare-secrets.md](docs/setup-cloudflare-secrets.md) | Secrets / Variables 配置清单 |
