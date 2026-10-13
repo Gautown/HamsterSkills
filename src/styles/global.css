@@ -406,9 +406,53 @@ h2 {
 
 /* .lang-toggle / .theme-toggle 的样式见文件后部「主题 / 语言切换按钮」 */
 
-/* hero */
+/*
+ * hero 背景：一道居中的波浪装饰。
+ *
+ * 图片是 2880×832（宽高比 3.46）的透明 PNG，四角 alpha 为 0，
+ * 直接当背景用不会出现白底方块。
+ *
+ * 用 ::before 而不是直接 background-image：
+ * 深色模式需要用 filter 压低亮度，而 filter 作用在 .hero 上
+ * 会把标题和按钮一起压暗。放到伪元素上才能只调背景。
+ *
+ * background-size 用 contain 而非 cover：这张图本身很扁，
+ * cover 为了填满高度会把两端大幅裁掉，波形会被截断；
+ * contain 保证整道波浪完整可见，多出来的空间因透明而无感。
+ */
 .hero {
   padding: 48px 0 8px;
+  /* inset:0 需要定位上下文；isolation 建层叠上下文，让 z-index:-1 不逃到 body 背景之后 */
+  position: relative;
+  isolation: isolate;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: url('/banner.png');
+  background-position: center center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/*
+ * 深色模式：图是浅底配色，直接铺在深色背景上会刺眼。
+ * 压亮度 + 略降不透明度，保留形状感又不抢内容的注意力。
+ */
+:root[data-theme='dark'] .hero::before {
+  filter: brightness(0.75) saturate(1.15);
+  opacity: 0.6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .hero::before {
+    filter: brightness(0.75) saturate(1.15);
+    opacity: 0.6;
+  }
 }
 
 /*
