@@ -270,7 +270,17 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
       card.classList.toggle('hidden', !show)
       if (show) visible++
     }
-    empty?.classList.toggle('hidden', visible > 0)
+    /*
+     * 索引还没加载完时**不能**报「没有匹配」。
+     *
+     * 首次输入会触发 ensureFull() 拉 JSON（实测 ~165ms），
+     * 但 applyFilter() 是同步执行的，此刻 cards 里只有首屏内联的 150 张。
+     * 用户搜「scraping」若这 150 张里没有，就会先看到一句
+     * 「没有匹配的技能」，几百毫秒后索引到了才自我纠正 —— 提示闪一下。
+     * 判据：只要还有加载中的可能性，就先不说「没有」。
+     */
+    const maybeIncomplete = !loaded && loadState !== 'error'
+    empty?.classList.toggle('hidden', visible > 0 || maybeIncomplete)
   }
 
   function applySort(): void {
@@ -321,11 +331,22 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
   })
 
   /* ---------- 搜索联动 ---------- */
+  /**
+   * 显式搜索（点「试试这些」快捷词、或跨页事件）后跳到网格。
+   *
+   * 与「边打字边筛」不同：这里是用户明确要看搜索结果，
+   * 所以**等全量索引就位再滚动**，避免滚过去看到的还是首屏那 150 张。
+   *
+   * 滚动行为遵循 prefers-reduced-motion：平滑滚动对前庭功能障碍用户
+   * 是实际伤害，不是单纯的观感问题。
+   */
   function runSearch(q: string) {
     if (input) input.value = q
-    ensureFull()
-    applyFilter()
-    grid?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    void ensureFull().then(() => {
+      applyFilter()
+      const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      grid?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' })
+    })
   }
 
   // 「试试这些」快捷词：写回导航栏输入框并就地筛选
@@ -369,6 +390,17 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
   }
 
   input?.addEventListener('input', () => {
+    /*
+     * 后台预取全量索引，但**不 await**。
+     *
+     * 旧写法 `ensureFull(); applyFilter()` 里，ensureFull 只是发起
+     * fetch 就返回，applyFilter 紧接着同步执行 —— 于是用户每敲一个字母
+     * 都要在首屏那 150 张上先筛一遍，而全量结果要等 fetch 回来才出现。
+     * 首次输入尤其突兀：输入框已显示关键词，网格里却还是原来的 150 张。
+     *
+     * 改成后台预取后，输入立刻响应，索引到位时 loadAll 末尾会
+     * 自行 applyFilter() 补上全量结果，用户无感知。
+     */
     ensureFull()
     applyFilter()
   })
