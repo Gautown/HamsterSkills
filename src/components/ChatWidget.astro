@@ -111,28 +111,39 @@ const strings = {
 -->
 <style is:global>
   /*
-    右边缘垂直居中。
-    - right: 0 让按钮半贴边（translateX 50% 会让一半出屏，所以不这么做）
-    - top: 50% + translateY(-50%) 让「按钮 + 面板」整体垂直居中
-    - z-index 高于导航栏，避免被吸顶导航遮挡
-    面板向左展开（right: 100%），不覆盖按钮本身
+    固定在视口右下角，「面板 + 按钮」作为一个整体。
+    - right / bottom 统一管边距，面板和按钮都靠这条边对齐
+    - DOM 顺序是「面板 → 按钮」，所以用 column（不是 column-reverse）：
+      面板排在上方往上长，按钮留在右下角不动
+    - align-items: flex-end 让面板右边缘与按钮右边缘齐平；
+      不用它的话 340px 的面板会按 stretch 拉伸，与按钮错开
+    - z-index 高于吸顶导航，避免被遮挡
   */
   .chat-dock {
     position: fixed;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
+    right: var(--dock-inset, 20px);
+    bottom: var(--dock-inset, 20px);
     z-index: 200;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
+    /*
+      三个尺寸绑成变量，供 .chat-panel 算自身高度上限。
+      面板并非贴视口底边：它下方还压着按钮和间距，
+      所以可用高度要减掉这三项，漏算任何一项面板就会顶出视口顶端
+      （曾漏算按钮，1080px 视口下面板顶端跑到 -38px）。
+    */
+    --launcher-size: 46px;
+    --panel-gap: 12px;
   }
 
   /* ---------- 悬浮按钮 ---------- */
 
   .chat-launcher {
-    width: 46px;
-    height: 46px;
-    margin-right: 10px;
+    width: var(--launcher-size, 46px);
+    height: var(--launcher-size, 46px);
+    /* 外边距交给 .chat-dock 统一管，这里保持 0 */
+    margin: 0;
     border: 1px solid var(--line);
     border-radius: 50%;
     background: var(--surface);
@@ -184,9 +195,19 @@ const strings = {
 
   .chat-panel {
     width: 340px;
-    max-width: calc(100vw - 76px);
-    /* 向左展开，露出右侧的悬浮按钮 */
-    margin-right: 12px;
+    /* 左右各留一个 dock 内边距，面板不会顶到屏幕左边 */
+    max-width: calc(100vw - var(--dock-inset, 20px) * 2);
+    /* 面板右边缘由 dock 的 right 定位，这里只留与按钮的竖向间距 */
+    margin-bottom: var(--panel-gap, 12px);
+    /*
+      面板整体不许超出视口。日志区上限已翻倍到 92vh，
+      内容高度会超过一屏，靠这条上限把多出来的部分挤回
+      .chat-log 内部滚动，而不是顶出屏幕顶端。
+      减去的三项分别是：dock 离底、按钮高度、按钮上方的间距。
+    */
+    max-height: calc(
+      100vh - var(--dock-inset, 20px) - var(--launcher-size, 46px) - var(--panel-gap, 12px)
+    );
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: var(--surface);
@@ -273,8 +294,20 @@ const strings = {
 
   .chat-log {
     flex: 1;
-    min-height: 220px;
-    max-height: 46vh;
+    /*
+      高度翻倍：220px → 440px，46vh → 92vh。
+
+      min-height 是 max(220px, min(440px, 46vh))，两头都要：
+      - 内层 min(440px, 46vh)：视口够高（≥ ~957px）时给满 440px，
+        不够时按比例缩，避免固定下限把面板顶出屏幕
+      - 外层 max(220px, …)：兜住缩过头的情况。矮视口下
+        46vh 可能低于原来的 220px，若不兜底日志区反而比以前更矮
+      （实测 443px 高的窗口：46vh = 204px < 220px）
+
+      上限交给 .chat-panel 的 max-height 兜底，面板不会超出视口。
+    */
+    min-height: max(220px, min(440px, 46vh));
+    max-height: 92vh;
     overflow-y: auto;
     padding: 14px;
     display: flex;
@@ -523,30 +556,24 @@ const strings = {
   }
 
   /*
-    窄屏：面板改为占满可用宽度并垂直居中。
-    右边缘锚点在窄屏会挡住内容，且 340px 面板在 375px 屏上几乎贴满左边。
+    窄屏：只调边距与宽度。
+    右下角布局在窄屏同样成立（基础样式已经如此），
+    但 340px 的面板在 375px 屏上会顶到左边，所以放宽到几乎占满。
   */
   @media (max-width: 560px) {
     .chat-dock {
-      top: auto;
-      bottom: 16px;
-      transform: none;
-      flex-direction: column-reverse;
-      align-items: flex-end;
-    }
-
-    .chat-launcher {
-      margin-right: 14px;
+      right: 14px;
+      bottom: 14px;
+      --dock-inset: 14px;
     }
 
     .chat-panel {
-      margin: 0 14px 12px 0;
       width: calc(100vw - 28px);
       max-width: none;
     }
 
     .chat-log {
-      max-height: 52vh;
+      max-height: 84vh;
     }
   }
 
