@@ -10,8 +10,14 @@ export function getStaticPaths() {
 
 const skills = await getCollection('skills')
 const category = Astro.params.category as CategoryKey
+const inCategory = skills.filter((s) => s.data.category === category)
 ---
 
-<Layout lang="en" title={CATEGORY_NAMES.en[category]}>
+<Layout
+  lang="en"
+  title={CATEGORY_NAMES.en[category]}
+  description={`${inCategory.length} AI skills in the "${CATEGORY_NAMES.en[category]}" category, with purpose descriptions and source repositories. One-click copy.`}
+  alternate={{ lang: 'zh', href: `/categories/${category}/` }}
+>
   <CategoryPage locale="en" category={category} skills={skills} />
 </Layout>

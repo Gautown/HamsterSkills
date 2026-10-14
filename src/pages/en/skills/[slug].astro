@@ -19,6 +19,7 @@ if (!entry) return
   title={entry.data.titleEn}
   description={entry.data.descriptionEn}
   path={`/en/skills/${entry.id}/`}
+  alternate={{ lang: 'zh', href: `/skills/${entry.id}/` }}
   skill={{
     id: entry.id,
     title: entry.data.titleEn,

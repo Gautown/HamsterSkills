@@ -13,6 +13,16 @@ interface Props {
   /** 该页面的站点内路径（如 /skills/pdf），用于拼 canonical 与 og:url */
   path?: string
   /**
+   * 同一内容的另一种语言版本的绝对 URL。
+   *
+   * 站内中英是同一批内容的两套 URL（zh 在根、en 在 /en/），
+   * 没有 hreflang 互指时搜索引擎无法判断哪套权威，
+   * 存在两套互相稀释的风险（典型的重复内容形态）。
+   */
+  alternate?: { lang: string; href: string }
+  /** og:type；详情页传 article 类语义，其余留空按 website */
+  ogType?: string
+  /**
    * 当前页面的技能信息。仅技能详情页传入，
    * 聊天窗会把它作为上下文发给后端，让回答能结合这条技能展开。
    */
@@ -24,7 +34,7 @@ interface Props {
   }
 }
 
-const { lang, title, description, path, skill } = Astro.props
+const { lang, title, description, path, alternate, ogType, skill } = Astro.props
 const t = T[lang]
 
 /*
@@ -37,7 +47,16 @@ const pathname = path ?? Astro.url.pathname
 const canonical = new URL(pathname, SITE_ORIGIN).href
 const pageTitle = title ? `${title} · ${t.siteName}` : t.siteName
 const pageDesc = description ?? t.siteDesc
-const ogImage = new URL('/og.svg', SITE_ORIGIN).href
+/*
+ * OG 图必须是 PNG：Twitter / Facebook / Slack / LinkedIn 的图片抓取器
+ * 普遍不支持 SVG（各家爬虫的已知限制，与浏览器能否显示无关），
+ * 而 og:image 恰恰只会被这些爬虫消费。此前这里指向 /og.svg，
+ * 而那个文件根本不存在 —— 线上实测 404，社交分享从来没出过图。
+ * 改由 scripts/make-og-image.mjs 生成 public/og.png。
+ */
+const ogImage = new URL('/og.png', SITE_ORIGIN).href
+/** hreflang 必须是绝对 URL */
+const alternateHref = alternate ? new URL(alternate.href, SITE_ORIGIN).href : null
 ---
 
 <!doctype html>
@@ -63,18 +82,31 @@ const ogImage = new URL('/og.svg', SITE_ORIGIN).href
     <!-- canonical：告诉搜索引擎本页的唯一权威地址（站内中英同源时尤其重要） -->
     <link rel="canonical" href={canonical} />
 
-    <meta property="og:type" content="website" />
+    {/*
+      hreflang：中英两套 URL 互指，声明「这是同一内容的不同语言版本」。
+      没有它，搜索引擎只能自行猜测哪套权威，两套会互相稀释。
+    */}
+    <link rel="alternate" hreflang={lang === 'zh' ? 'zh-CN' : 'en'} href={canonical} />
+    {alternateHref && <link rel="alternate" hreflang={lang === 'zh' ? 'en' : 'zh-CN'} href={alternateHref} />}
+    <link rel="alternate" hreflang="x-default" href={canonical} />
+
+    <meta property="og:type" content={ogType ?? 'website'} />
     <meta property="og:site_name" content={t.siteName} />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDesc} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
+    {/* 图片本身没有信息量，但 alt 是无障碍与部分平台的可读性要求 */}
+    <meta property="og:image:alt" content={`${t.siteName} — ${t.siteDesc}`} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta property="og:locale" content={lang === 'zh' ? 'zh_CN' : 'en_US'} />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={pageDesc} />
     <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={`${t.siteName} — ${t.siteDesc}`} />
 
     <title>{pageTitle}</title>
   </head>

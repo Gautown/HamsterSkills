@@ -5,8 +5,14 @@ import CategoryIndex from '../../../components/CategoryIndex.astro'
 import { T } from '../../../i18n/translations'
 
 const skills = await getCollection('skills')
+const t = T.en
 ---
 
-<Layout lang="en" title={T.en.categoriesTitle}>
+<Layout
+  lang="en"
+  title={t.categoriesTitle}
+  description={`Browse ${skills.length} AI skills across 10 use-case categories — development, design, writing, data, office and more. Copy & go.`}
+  alternate={{ lang: 'zh', href: '/categories/' }}
+>
   <CategoryIndex locale="en" skills={skills} />
 </Layout>

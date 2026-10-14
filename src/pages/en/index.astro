@@ -6,6 +6,6 @@ import HomePage from '../../components/HomePage.astro'
 const skills = await getCollection('skills')
 ---
 
-<Layout lang="en">
+<Layout lang="en" path="/en/" alternate={{ lang: 'zh', href: '/' }}>
   <HomePage locale="en" skills={skills} />
 </Layout>

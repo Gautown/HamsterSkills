@@ -17,8 +17,10 @@ const LIMIT = Number(process.env.STATIC_ASSET_LIMIT ?? 20000)
  * - _headers：Cloudflare 静态资产的响应头规则（安全头 / 缓存策略）
  * - logo.svg：英文页同样引用 /logo.svg，dist-en 必须自包含
  * - banner.png：hero 背景图，英文首页 /en/ 也用同一张
+ * - og.png：og:image 指向它，两站都要有（原先列的 og.svg 那个文件根本不存在，
+ *   线上实测 404，社交分享从来没出过图）
  */
-const SHARED = ['_astro', '_headers', 'favicon.svg', 'logo.svg', 'og.svg', 'banner.png', 'robots.txt', '404.html']
+const SHARED = ['_astro', '_headers', 'favicon.svg', 'logo.svg', 'og.png', 'banner.png', 'robots.txt', '404.html']
 
 if (!fs.existsSync(DIST)) {
   console.error('✗ 未找到 dist/，请先运行 npm run build')
@@ -27,6 +29,22 @@ if (!fs.existsSync(DIST)) {
 
 fs.rmSync(ZH, { recursive: true, force: true })
 fs.rmSync(EN, { recursive: true, force: true })
+
+/*
+ * 校验 SHARED 里的文件在 dist/ 根确实存在。
+ *
+ * 踩过的坑：SHARED 列过一个 `og.svg`，而 public/ 里从来没有这个文件。
+ * Astro 不会报错（public/ 下缺文件不阻断构建），
+ * copyFileSync 会静默失败（外层有 try/catch），于是：
+ *   构建「成功」→ 部署「成功」→ og:image 线上 404 → 社交分享永远没图。
+ * 只有在这里显式校验才拦得住。
+ */
+const missingShared = SHARED.filter((f) => !fs.existsSync(path.join(DIST, f)))
+if (missingShared.length) {
+  console.error(`✗ SHARED 里的以下资源在 dist/ 中不存在：${missingShared.join(', ')}`)
+  console.error('  检查 public/ 下是否真的生成了这些文件（例如 og.png 需运行 npm run og-image）')
+  process.exit(1)
+}
 
 /** 递归复制目录；skipTopLevel 用于在复制 dist 根时跳过 en/ */
 function copyTree(src, dest, skipTopLevel = new Set()) {

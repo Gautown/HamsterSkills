@@ -5,8 +5,14 @@ import CategoryIndex from '../../components/CategoryIndex.astro'
 import { T } from '../../i18n/translations'
 
 const skills = await getCollection('skills')
+const t = T.zh
 ---
 
-<Layout lang="zh" title={T.zh.categoriesTitle}>
+<Layout
+  lang="zh"
+  title={t.categoriesTitle}
+  description={`按 10 个用途分类浏览 ${skills.length} 个 AI Skill，覆盖开发、设计、写作、数据、办公等方向，一键复制即用。`}
+  alternate={{ lang: 'en', href: '/en/categories/' }}
+>
   <CategoryIndex locale="zh" skills={skills} />
 </Layout>
