@@ -221,14 +221,21 @@ const strings = {
     display: none;
   }
 
-  .chat-head {
+  /*
+  标题栏用实心蓝底。
+
+  背景写死 #0078D4 而不是 var(--accent)：深色模式下 --accent 是浅蓝 #4cc2ff，
+  配白字会看不清（对比度约 1.6:1）。字面值在明暗两种模式下都能保证可读。
+  白字配 #0078D4 对比度约 4.6:1，达 WCAG AA 正文标准。
+*/
+.chat-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface);
+    padding: 10px 14px;
+    /* 蓝底已经起到分隔作用，再叠一条线在深色模式下会变成一道深色缝 */
+    background: #0078d4;
   }
 
   .chat-head-text {
@@ -240,17 +247,24 @@ const strings = {
 
   .chat-title {
     margin: 0;
-    font-size: 14px;
+    font-size: 1.2rem;
     font-weight: 600;
+    color: #fff;
   }
 
-  /* 模型名：让用户明确知道在跟哪个模型对话 */
+  /*
+  模型名不再展示。
+  「在跟哪个模型对话」原本是想给用户透明度，但现在后台限流时
+  这个标签只会让人误以为「模型选错了」，反而制造困惑 —— 真正的
+  问题在服务商侧，展示模型名解决不了。
+
+  元素保留在 DOM 里（而不是删掉），万一将来要恢复展示不必改模板。
+  */
   .chat-model {
-    font-size: 11px;
-    color: var(--muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    display: none;
   }
 
+  /* 关闭按钮：蓝底上必须用白字，否则深灰图标几乎看不见 */
   .chat-icon-btn {
     width: 26px;
     height: 26px;
@@ -258,15 +272,16 @@ const strings = {
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: var(--muted);
+    color: #fff;
     cursor: pointer;
     display: grid;
     place-items: center;
   }
 
+  /* 悬停用半透明白色叠加；原先的深色叠加在蓝底上几乎看不出变化 */
   .chat-icon-btn:hover {
-    background: var(--surface-2, rgba(0, 0, 0, 0.04));
-    color: var(--text);
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
   }
 
   .chat-icon-btn svg {
