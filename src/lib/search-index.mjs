@@ -212,11 +212,24 @@ export function buildIndex(skills) {
 
   for (let i = 0; i < skills.length; i++) {
     const s = skills[i]
-    // 标题与描述权重更高：同一个词在标题里出现更可能是用户想要的
-    const titleTokens = tokenize(s.title)
-    const descTokens = tokenize(s.desc)
-    const tagTokens = s.tags.flatMap(t => tokenize(t))
-    const catTokens = tokenize(s.category)
+    /*
+     * 标题与描述权重更高：同一个词在标题里出现更可能是用户想要的。
+     *
+     * 四处都必须显式传 `expand: false`。tokenize 的默认值是
+     * `opts.expand !== false`（undefined 也算开），漏传就会让**文档侧**
+     * 也展开别名——与 tokenize 自己注释里「只在查询侧开启」的设计意图矛盾。
+     *
+     * 实际后果（实测）：一条 title 为「数据抓取助手」的技能，
+     * 文档侧词项里会混进 scrape / fetch / crawl 三个源文本根本没有的词，
+     * 抬高它们的 df、压低 idf，恰好削弱别名表本想保护的那个信号，
+     * 还让人为制造的词汇重叠污染排序。
+     *
+     * 别名只在 search() 查询侧展开，见该函数。
+     */
+    const titleTokens = tokenize(s.title, { expand: false })
+    const descTokens = tokenize(s.desc, { expand: false })
+    const tagTokens = s.tags.flatMap(t => tokenize(t, { expand: false }))
+    const catTokens = tokenize(s.category, { expand: false })
 
     const counts = new Map()
     const bump = (tokens, weight) => {

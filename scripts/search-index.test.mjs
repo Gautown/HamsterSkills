@@ -94,6 +94,51 @@ test('tokenize：空输入返回空数组', () => {
   assert.deepEqual(tokenize(undefined), [])
 })
 
+/* ------------------------------ buildIndex ------------------------------ */
+
+/** 取出某篇文档的词项键集合 */
+const termsOf = (index, i) => new Set(index.docTerms[i].keys())
+
+test('★ buildIndex：文档侧不做别名展开', () => {
+  /*
+   * 回归测试。此前 buildIndex 调 tokenize 时不传 opts，
+   * 而 tokenize 的默认值是 expand = true（opts.expand !== false），
+   * 于是**文档侧也被展开了别名**——与 tokenize 注释里
+   * 「expand 只在查询侧开启」的设计意图直接矛盾。
+   *
+   * 后果：每条含中文的文档都被塞进别名表里的英文词，抬高那些词的 df、
+   * 压低 idf，恰好削弱了别名表本想保护的那个信号。
+   *
+   * 之前的测试只覆盖 tokenize 显式传 opts 的行为（见上方「别名只作用于查询侧」），
+   * 天然放过了这个 bug。
+   */
+  const index = buildIndex([
+    { id: 'a', title: '数据抓取助手', desc: '纯中文描述', tags: ['抓取'], category: '开发' },
+  ])
+  const terms = termsOf(index, 0)
+  for (const leaked of ['scrape', 'fetch', 'crawl']) {
+    assert.ok(!terms.has(leaked), `文档侧不应出现别名词 ${leaked}，实际词项：${[...terms].join(', ')}`)
+  }
+  // 中文二元组本身必须在
+  assert.ok(terms.has('抓取'), '中文二元组不受影响')
+})
+
+test('buildIndex：别名字段只进查询侧，不影响文档排序', () => {
+  /*
+   * 两条技能：正文真写了 scraping 的应当排在
+   * 「分类名里碰巧有中文、但正文与 scraping 无关」的前面。
+   * 文档侧展开会人为制造词汇重叠，破坏这个排序。
+   */
+  const skills = [
+    { id: 'unrelated', title: '团队协作平台', desc: 'project management tool', tags: ['team'], category: '抓取' },
+    { id: 'real', title: 'Web Scraper', desc: 'a scraping library', tags: ['python'], category: '开发' },
+  ]
+  const index = buildIndex(skills)
+  // 英文查询不应因为中文分类名而命中 unrelated
+  const hits = search(index, 'scraping')
+  assert.equal(hits.length > 0 && hits[0].id, 'real', `期望 real 排第一，实际：${JSON.stringify(hits.map(h => h.id))}`)
+})
+
 /* ---------------------------- toSearchable ---------------------------- */
 
 test('toSearchable：只保留检索所需字段', () => {
