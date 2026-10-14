@@ -15,6 +15,7 @@ import {
   dailyKey,
   handleChat,
   normalize,
+  parseUpstreamError,
   rateLimited,
 } from '../src/worker/chat.ts'
 
@@ -337,17 +338,155 @@ test('handleChat：上游无 body 时返回 502', async () => {
   }
 })
 
-test('handleChat：上游 429 映射为 429（服务商限流，与本站限额无关）', async () => {
-  // 实测：免费 key 密集调用会被服务商侧限流，原先被笼统报成「模型暂时不可用」，
-  // 用户会误以为是站点故障。
+test('handleChat：上游持续 429 映射为 429（服务商限流，与本站限额无关）', async () => {
+  // 实测：免费档每分钟只放行 34 个请求就会 429，响应体里写着
+  // 「您已达到免费用户的 API 速率限制。升级 Token Plan 即可解锁更高限额」。
+  // 原先被笼统报成「模型暂时不可用」，用户会误以为是站点故障。
   const restore = mockFetch(() => new Response('rate limited', { status: 429 }))
   try {
-    const res = await handleChat(postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '40.0.0.1'), okEnv)
+    const res = await handleChat(
+      postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '40.0.0.1'),
+      { ...okEnv, CHAT_RETRY_DELAY_MS: '1' }
+    )
     assert.equal(res.status, 429, '上游限流应原样用 429，让前端能区分「等一会」')
-    assert.match((await res.json()).error, /服务商|限流/)
+    const { error } = await res.json()
+    assert.match(error, /服务商|限流/)
+    // 文案要给出可执行的等待时间，否则用户只会反复点重试把额度耗在自己身上
+    assert.match(error, /15\s*秒/, '限流提示应告知大致恢复时间')
   } finally {
     restore()
   }
+})
+
+/* ------------------------- 上游限流：重试与额度 ------------------------- */
+
+test('handleChat：上游首次 429 会重试一次，重试成功即正常返回', async () => {
+  // 实测限流窗口约 14 秒才恢复，短等待重试一次能吸收掉大部分抖动，
+  // 用户根本不会看到报错。
+  let calls = 0
+  const restore = mockFetch(() => {
+    calls++
+    return calls === 1
+      ? new Response('{"error":{"message":"您已达到免费用户的 API 速率限制"}}', { status: 429 })
+      : llmOk('重试后成功')
+  })
+  try {
+    const res = await handleChat(
+      postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '40.0.1.1'),
+      { ...okEnv, CHAT_RETRY_DELAY_MS: '1' }
+    )
+    assert.equal(res.status, 200, '重试成功应直接返回 200')
+    assert.equal(calls, 2, '应恰好调用上游两次（首次 + 重试一次）')
+    const events = await readEvents(res)
+    assert.equal(events[0].type, 'meta')
+    assert.ok(events.some(e => e.text?.includes('重试后成功')), '应把重试后的内容转发给前端')
+  } finally {
+    restore()
+  }
+})
+
+test('handleChat：上游持续 429 只重试一次，不无限重试', async () => {
+  let calls = 0
+  const restore = mockFetch(() => {
+    calls++
+    return new Response('rate limited', { status: 429 })
+  })
+  try {
+    const res = await handleChat(
+      postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '40.0.1.2'),
+      { ...okEnv, CHAT_RETRY_DELAY_MS: '1' }
+    )
+    assert.equal(res.status, 429)
+    assert.equal(calls, 2, '免费档额度本就紧张，多试只会把配额桶抽得更干')
+  } finally {
+    restore()
+  }
+})
+
+test('handleChat：网络异常不重试', async () => {
+  // 等几秒也连不上，且 DNS / 超时 / 连接被拒都不是重试能解决的
+  let calls = 0
+  const restore = mockFetch(() => {
+    calls++
+    throw new Error('ECONNREFUSED')
+  })
+  try {
+    const res = await handleChat(
+      postRequest({ messages: [{ role: 'user', content: 'hi' }] }, '40.0.1.3'),
+      { ...okEnv, CHAT_RETRY_DELAY_MS: '1' }
+    )
+    assert.equal(res.status, 502)
+    assert.equal(calls, 1, '网络异常应立即返回，不浪费一次额度')
+    assert.match((await res.json()).error, /网络异常/)
+  } finally {
+    restore()
+  }
+})
+
+test('★ handleChat：服务商限流不消耗本站每日额度', async () => {
+  // 关键回归：额度计数原先在调用上游**之前**就扣掉了，
+  // 于是服务商一限流，用户的每日额度就被白扣光。
+  // 现在改成先只读挡一道、确认要服务之后才计数。
+  const restore = mockFetch(() => new Response('rate limited', { status: 429 }))
+  const kv = makeKv()
+  const env = {
+    ...okEnv,
+    CHAT_QUOTA: kv,
+    CHAT_DAILY_LIMIT: '2',
+    CHAT_RATE_LIMIT: '10',
+    CHAT_RETRY_DELAY_MS: '1',
+  }
+  try {
+    for (let i = 0; i < 4; i++) {
+      const res = await handleChat(
+        postRequest({ messages: [{ role: 'user', content: `q${i}` }] }, `40.0.2.${i + 1}`),
+        env
+      )
+      assert.equal(res.status, 429, `第 ${i + 1} 次都应因服务商限流而失败`)
+    }
+    // 4 次全被服务商拒绝，但计数应仍为 0
+    assert.equal(await kv.get(`chat:${dailyKey()}`), null, '被服务商拒绝的请求不该写入额度计数')
+  } finally {
+    restore()
+  }
+})
+
+test('handleChat：成功请求才计入每日额度', async () => {
+  const restore = mockFetch(() => llmOk())
+  const kv = makeKv()
+  try {
+    for (let i = 0; i < 3; i++) {
+      const res = await handleChat(
+        postRequest({ messages: [{ role: 'user', content: `q${i}` }] }, `40.0.3.${i + 1}`),
+        { ...okEnv, CHAT_QUOTA: kv, CHAT_DAILY_LIMIT: '10', CHAT_RATE_LIMIT: '10' }
+      )
+      assert.equal(res.status, 200)
+    }
+    assert.equal(await kv.get(`chat:${dailyKey()}`), '3', '3 次成功应计 3 次')
+  } finally {
+    restore()
+  }
+})
+
+/* ---------------------------- parseUpstreamError ---------------------------- */
+
+test('parseUpstreamError：解析 OpenAI 形状 {error:{message}}', () => {
+  assert.equal(
+    parseUpstreamError('{"error":{"code":"","message":"您已达到免费用户的 API 速率限制。","type":"AgnesAI_error"}}'),
+    '您已达到免费用户的 API 速率限制。'
+  )
+})
+
+test('parseUpstreamError：兼容 {error:"..."} 与 {message} 两种形状', () => {
+  assert.equal(parseUpstreamError('{"error":"quota exceeded"}'), 'quota exceeded')
+  assert.equal(parseUpstreamError('{"message":"bad model"}'), 'bad model')
+})
+
+test('parseUpstreamError：非 JSON 原样返回并截断，空 body 返回空串', () => {
+  assert.equal(parseUpstreamError('rate limited'), 'rate limited')
+  assert.equal(parseUpstreamError('x'.repeat(500)).length, 200, '超长响应应截断，避免日志被撑爆')
+  assert.equal(parseUpstreamError(''), '')
+  assert.equal(parseUpstreamError('   '), '')
 })
 
 test('handleChat：上游 5xx 映射为 502 且提示可重试', async () => {

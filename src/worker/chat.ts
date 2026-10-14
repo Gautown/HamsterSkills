@@ -45,9 +45,63 @@ const MAX_TOKENS = 800
  */
 const SEARCH_TOP_K = 10
 
+/**
+ * 上游 429 后重试一次前的等待时间（毫秒），可用 CHAT_RETRY_DELAY_MS 覆盖。
+ *
+ * 实测（2026-10-14，agnes-3.0-flash 免费档，并发 1）：
+ *   连续请求 34 个后开始 429；限流窗口每分钟只放行 34 个请求，
+ *   从触发限流到恢复约 14 秒；成功请求耗时中位 7025ms。
+ *
+ * 5 秒是权衡：短到用户察觉不到，长到有机会赶上配额桶回补。
+ * 只重试 1 次——免费档本来就很紧，多试几次只会把桶抽得更干。
+ */
+const DEFAULT_RETRY_DELAY_MS = 5_000
+
+/**
+ * 上游持续限流时的用户提示。
+ *
+ * 「约 15 秒」来自实测恢复耗时；不给具体数字的话用户只会反复点重试，
+ * 把本就不够用的免费额度耗在自己身上。
+ */
+const UPSTREAM_RATE_LIMIT_MESSAGE = '提问太频繁，服务商侧正在限流，约 15 秒后再试'
+
 /** 每 IP 频率限制窗口 */
 const RATE_WINDOW_MS = 60_000
 const recentHits = new Map<string, number[]>()
+
+/** 等待若干毫秒。用于上游限流后的短暂退避 */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * 从上游错误响应体里取出服务商给的**真实原因**。
+ *
+ * 此前这里只把响应体打进日志，用户看到的是写死的「正在限流」——
+ * 那是猜的。拿到真实原因才能判断该不该让用户等：
+ * 429 未必都意味着「等一会就好」（实测有免费档配额用尽这类，
+ * 文案与恢复预期完全不同）。
+ *
+ * 兼容三种常见形状：OpenAI 的 {error:{message}}、{error:"..."}、{message}，
+ * 以及非 JSON 的纯文本错误页。
+ */
+export function parseUpstreamError(body: string): string {
+  const trimmed = body.trim()
+  if (!trimmed) return ''
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+    const err = parsed.error
+    if (typeof err === 'string') return err
+    if (err && typeof err === 'object') {
+      const message = (err as { message?: unknown }).message
+      if (typeof message === 'string') return message
+    }
+    if (typeof parsed.message === 'string') return parsed.message
+  } catch {
+    // 非 JSON，原样返回
+  }
+  return trimmed.slice(0, 200)
+}
 
 /**
  * KV 绑定的最小接口。
@@ -75,6 +129,8 @@ export interface ChatEnv {
   AI_API_KEY?: string
   CHAT_RATE_LIMIT?: string
   CHAT_DAILY_LIMIT?: string
+  /** 上游 429 后重试前的等待毫秒数，不配则用 5 秒 */
+  CHAT_RETRY_DELAY_MS?: string
   CHAT_QUOTA?: KvNamespace
 }
 
@@ -199,14 +255,47 @@ export function dailyKey(now = new Date()): string {
 }
 
 /**
- * 全站每日额度：读 → 判断 → 写。
- * KV 全局最终一致，极端并发下可能小幅超出上限，这是可接受的兜底。
- * 未绑定 KV 时退化为 isolate 内计数（更弱但不至于不可用）。
+ * 全站每日额度。
+ *
+ * 刻意拆成「只读检查」与「计数」两步，而不是「先扣后退」：
+ * 调用上游可能失败（服务商限流、网络异常、5xx），这些都不该消耗用户额度。
+ * 改成失败后退款的话，KV 的读-改-写在并发下会丢更新（后写覆盖先写），
+ * 退款反而可能把计数弄错；先读后写就没有这个问题。
+ *
+ * KV 全局最终一致，peek 与 commit 之间有并发窗口，极端情况可能小幅超出上限，
+ * 这是可接受的兜底。未绑定 KV 时退化为 isolate 内计数（更弱但不至于不可用）。
  */
 const memoryDaily = new Map<string, number>()
 
-async function consumeDailyQuota(env: ChatEnv, limit: number): Promise<{ ok: boolean; used: number }> {
-  const key = `chat:${dailyKey()}`
+function dailyCounterKey(): string {
+  return `chat:${dailyKey()}`
+}
+
+/**
+ * 只读当前用量，不写入。
+ * KV 读取失败时放行：计数器是辅助设施，不该让它把聊天整体拖垮。
+ */
+async function peekDailyQuota(env: ChatEnv, limit: number): Promise<{ ok: boolean; used: number }> {
+  const key = dailyCounterKey()
+  if (!env.CHAT_QUOTA) {
+    const used = memoryDaily.get(key) ?? 0
+    return { ok: used < limit, used }
+  }
+  try {
+    const used = Number((await env.CHAT_QUOTA.get(key)) ?? 0)
+    return { ok: used < limit, used }
+  } catch (error) {
+    console.error('[chat] KV 额度读取失败，按放行处理', error)
+    return { ok: true, used: 0 }
+  }
+}
+
+/**
+ * 计数 +1。只在确认要服务这次请求之后调用，
+ * 因此服务商限流与网络异常都不会消耗用户的每日额度。
+ */
+async function commitDailyQuota(env: ChatEnv, limit: number): Promise<{ ok: boolean; used: number }> {
+  const key = dailyCounterKey()
   if (!env.CHAT_QUOTA) {
     const used = (memoryDaily.get(key) ?? 0) + 1
     memoryDaily.set(key, used)
@@ -214,11 +303,11 @@ async function consumeDailyQuota(env: ChatEnv, limit: number): Promise<{ ok: boo
   }
   try {
     const current = Number((await env.CHAT_QUOTA.get(key)) ?? 0)
-    if (current >= limit) return { ok: false, used: current }
-    await env.CHAT_QUOTA.put(key, String(current + 1), { expirationTtl: 60 * 60 * 48 })
-    return { ok: true, used: current + 1 }
+    const used = current + 1
+    await env.CHAT_QUOTA.put(key, String(used), { expirationTtl: 60 * 60 * 48 })
+    return { ok: used <= limit, used }
   } catch (error) {
-    // KV 故障时宁可放行也不能让聊天整体不可用；此时退化为内存计数
+    // KV 故障时降级为内存计数，至少在本 isolate 内仍然有效
     console.error('[chat] KV 额度计数失败，降级为内存计数', error)
     const used = (memoryDaily.get(key) ?? 0) + 1
     memoryDaily.set(key, used)
@@ -306,7 +395,7 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
   }
 
   /*
-   * 先解析并校验请求体，再扣每日额度。
+   * 先解析并校验请求体，再看每日额度。
    * 顺序很重要：畸形请求（坏 JSON、空内容、超长）根本不会调用模型，
    * 不该占用全站额度——否则一个坏客户端或探测程序就能用垃圾请求
    * 把当天的额度耗光。每 IP 限流已经挡住了这类洪泛。
@@ -321,9 +410,13 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
   const parsed = normalize(input)
   if ('error' in parsed) return json({ error: parsed.error }, 400)
 
-  const dailyLimit = num(env.CHAT_DAILY_LIMIT, 500)
-  const quota = await consumeDailyQuota(env, dailyLimit)
-  if (!quota.ok) {
+  const dailyLimit = num(env.CHAT_DAILY_LIMIT, 200)
+  /*
+   * 先只读挡一道，超额的请求不必白占服务商那点免费额度。
+   * 计数留到确认要服务之后（见下方 commitDailyQuota 的调用点）。
+   */
+  const peeked = await peekDailyQuota(env, dailyLimit)
+  if (!peeked.ok) {
     return json({ error: '今日提问额度已用完，明天再来吧' }, 429)
   }
 
@@ -351,44 +444,91 @@ export async function handleChat(request: Request, env: ChatEnv): Promise<Respon
    * 到这里为止的校验都还能返回正常的 HTTP 状态码（403/405/429/400/503）。
    * 一旦开始流式响应，响应头就已发出，后续只能通过 SSE 的 error 事件告知失败。
    */
-  let upstream: Response
-  try {
-    upstream = await fetch(`${apiBase}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.AI_API_KEY}` },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        temperature: 0.3,
-        stream: true,
-        messages: [
-          { role: 'system', content: buildSystemPrompt(parsed.context, hits) },
-          ...parsed.messages,
-        ],
-      }),
-      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
-    })
-  } catch (error) {
-    console.error('[chat] 调用模型异常', error)
+  let upstream: Response | null = null
+  let rateLimitBody = ''
+  let rateLimitStatus = 0
+  let networkError: unknown = null
+
+  /*
+   * 整个调用共用一个超时预算（含重试等待），
+   * 避免两次尝试各拿 60 秒把请求拖成两分钟。
+   */
+  const deadline = AbortSignal.timeout(LLM_TIMEOUT_MS)
+  const retryDelay = num(env.CHAT_RETRY_DELAY_MS, DEFAULT_RETRY_DELAY_MS)
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt > 1) {
+      console.log(`[chat] 上游限流，等待 ${retryDelay}ms 后重试`)
+      await sleep(retryDelay)
+    }
+    let res: Response
+    try {
+      res = await fetch(`${apiBase}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.AI_API_KEY}` },
+        body: JSON.stringify({
+          model,
+          max_tokens: MAX_TOKENS,
+          temperature: 0.3,
+          stream: true,
+          messages: [
+            { role: 'system', content: buildSystemPrompt(parsed.context, hits) },
+            ...parsed.messages,
+          ],
+        }),
+        signal: deadline,
+      })
+    } catch (error) {
+      /*
+       * 网络异常不重试：等几秒多半还是连不上，
+       * 而且失败的原因（DNS、超时、连接被拒）不是重试能解决的。
+       */
+      networkError = error
+      break
+    }
+    if (res.status !== 429) {
+      upstream = res
+      break
+    }
+    rateLimitStatus = res.status
+    // 读掉响应体再重试，否则连接挂住不放
+    rateLimitBody = await res.text().catch(() => '')
+  }
+
+  if (networkError) {
+    console.error('[chat] 调用模型异常', networkError)
     return json({ error: '网络异常，请稍后重试' }, 502)
+  }
+
+  /*
+   * 重试后仍是 429：上游侧的速率/配额限制（免费档尤其常见），与本站限额无关。
+   * 用服务商自己给的原因来记录，而不是只看状态码——否则无从判断
+   * 「等 15 秒会好」还是「这个原因永远不会好」。
+   */
+  if (!upstream) {
+    const reason = parseUpstreamError(rateLimitBody)
+    console.error(`[chat] LLM 返回 ${rateLimitStatus}（已重试 1 次仍限流）: ${reason}`)
+    return json({ error: UPSTREAM_RATE_LIMIT_MESSAGE }, 429)
   }
 
   if (!upstream.ok) {
     const body = await upstream.text().catch(() => '')
-    console.error(`[chat] LLM 返回 ${upstream.status}: ${body.slice(0, 300)}`)
-    /*
-     * 上游 429 是服务商侧的速率/额度限制（免费 key 尤其常见），
-     * 与本站的限额无关，重试也没用——要等对方的窗口恢复。
-     * 单独区分，否则用户会以为是站点故障，白等重试。
-     */
-    if (upstream.status === 429) {
-      return json({ error: '提问太频繁，服务商侧正在限流，请稍后再试' }, 429)
-    }
+    console.error(`[chat] LLM 返回 ${upstream.status}: ${parseUpstreamError(body)}`)
     // 上游 5xx 属于服务商故障，值得让用户重试
     return json({ error: upstream.status >= 500 ? '模型服务暂时不可用，请稍后重试' : '模型请求被拒绝，请稍后重试' }, 502)
   }
   if (!upstream.body) {
     return json({ error: '模型没有返回内容，请重试' }, 502)
+  }
+
+  /*
+   * 到这里确定要服务这次请求了，才计入每日额度。
+   * peek 与 commit 之间的并发窗口可能让实际用量略微越界，
+   * 与原先「KV 最终一致」的容忍度一致。
+   */
+  const quota = await commitDailyQuota(env, dailyLimit)
+  if (!quota.ok) {
+    console.warn(`[chat] 额度在调用期间被并发耗尽：${quota.used}/${dailyLimit}`)
   }
 
   return sseResponse(upstream.body, { model, dailyUsed: quota.used, dailyLimit })
