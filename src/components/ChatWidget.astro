@@ -247,7 +247,9 @@ const strings = {
 
   .chat-title {
     margin: 0;
-    font-size: 1.2rem;
+    font-size: 1rem;
+    /* body 本来就是 1.5，这里显式钉住，免得日后改 body 时被带着变 */
+    line-height: 1.5;
     font-weight: 600;
     color: #fff;
   }
