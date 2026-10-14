@@ -7,6 +7,7 @@ import { classifySkill } from '../lib/classify.mjs'
 import { AI_CACHE_FILE, SKILL_MANIFEST_FILE, loadAiCache, lookupAiCategory } from '../lib/ai-cache.mjs'
 import type { AiCacheFile } from '../lib/ai-cache.mjs'
 import { deriveSkillId, skillDirectory } from '../lib/skill-id.mjs'
+import { judgeMetadata, judgeProbe, estimateTokens, toJsonLine, type RepoMeta, type RepoProbe, type Verdict } from '../lib/triage'
 
 /* ------------------------------ 公共类型 ------------------------------ */
 
@@ -36,6 +37,12 @@ export interface RemoteRepo {
   strict?: boolean
   /** 单仓库 skill 数量上限（覆盖 perRepoMaxSkills） */
   maxSkills?: number
+  /** 阶段 1 判定结果（自动发现时由 discoverRepos 写入）；阶段 2 继承它做增量确认 */
+  triage?: Verdict
+  /** 该仓库的元数据快照，写入判定日志用 */
+  meta?: RepoMeta
+  /** 是否跳过入库判定（显式配置的仓库默认即跳过） */
+  exemptFromTriage?: boolean
 }
 
 /** 自动发现公开 skill 仓库（GitHub 检索 API，按主题 + star 排序）。 */
@@ -88,6 +95,8 @@ interface CacheFile {
   /** 文件列表曾因单仓上限被截断（提高上限后需重新拉取文件树） */
   cappedFiles?: boolean
   fetchedAt: string
+  /** 阶段 2 判定结果；仓库未变更时复用，避免每次构建重读 README */
+  triage?: Verdict
   files: Record<string, CachedFile>
 }
 
@@ -104,6 +113,15 @@ interface DiscoveredRepo {
   pushedAt: string
   /** 默认分支（检索结果自带）；有值时每个新仓库可省一次 API 调用 */
   branch?: string
+  /**
+   * 阶段 1 判定所需的其余元数据。
+   *
+   * 全部来自检索接口的同一条响应，**不产生任何额外请求** ——
+   * 这是把判定接进构建期而不拖慢它的关键。
+   */
+  meta?: RepoMeta
+  /** 阶段 1 判定结果；缓存下来，仓库未变更时不再重算 */
+  triage?: Verdict
 }
 
 interface ResolvedOptions {
@@ -155,6 +173,16 @@ interface LoadState {
   rateLimited: boolean
   /** 本次构建收录的技能清单（按 store 写入顺序，即最终生效顺序） */
   manifest: SkillManifestEntry[]
+  /** 本次构建对每个候选仓库的判定，写入 triage.jsonl */
+  triage: TriageRecord[]
+}
+
+/** 一条判定记录，落盘为 JSON Lines 的一行 */
+interface TriageRecord {
+  meta: RepoMeta
+  verdict: Verdict
+  /** 实际抓到的文件路径；SKIP 恒为空 */
+  fetchedFiles?: string[]
 }
 
 interface TreeResponse {
@@ -183,6 +211,8 @@ const DEFAULT_API_BASE = 'https://api.github.com'
 const DEFAULT_RAW_BASE = 'https://raw.githubusercontent.com'
 const DEFAULT_CACHE_DIR = '.cache/skills-remote'
 const DISCOVERY_CACHE_FILE = '_discovery.json'
+/** 判定日志（JSON Lines），与语料缓存同目录 */
+const TRIAGE_LOG_FILE = '_triage.jsonl'
 const DEFAULT_SKIP = ['template', 'templates', '.github', 'node_modules', 'dist', 'build']
 const SKILL_FILENAME = 'skill.md'
 const FETCH_TIMEOUT_MS = 30_000
@@ -221,7 +251,7 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
     name: 'github-skills-loader',
     async load(context) {
       const { logger } = context
-      const state: LoadState = { rateLimited: false, manifest: [] }
+      const state: LoadState = { rateLimited: false, manifest: [], triage: [] }
 
       // AI 分类记忆库（由 scripts/ai-classify.mjs 生成）。
       // 每次构建加载一次；文件不存在属正常情况（尚未跑过 AI 分类），此时全部走规则层。
@@ -247,18 +277,47 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
       if (options.discover?.enabled) {
         const discovered = await discoverRepos(options.discover, context, resolved)
         discoveredStars = new Map(discovered.map(item => [item.repo.toLowerCase(), item.stars]))
+        /*
+         * 阶段 1 硬拒绝的仓库不进队列。
+         *
+         * 规范里的硬拒绝（R1-R10）只作用于**自动发现**的仓库：
+         * 手工配置的 4 个仓库是人工确认过的内容源，
+         * 让自动规则去否决它们会造成无法预期的大规模内容消失。
+         */
+        const blocked = discovered.filter(item => item.triage?.decision === 'SKIP')
+        const admitted = discovered.filter(item => item.triage?.decision !== 'SKIP')
+        logger.info(
+          `[github-skills] 阶段 1 预筛：${discovered.length} 个候选，${blocked.length} 个硬拒绝，${admitted.length} 个进入抓取`,
+        )
+        /*
+         * 所有候选都记一条阶段 1 判定，不只是被拒的。
+         *
+         * 之前只在 SKIP 与走到阶段 2 时记录，结果限流降级那一次构建
+         * 日志是空的 —— 而「这轮为什么没产出」恰恰是最需要日志的时候。
+         * 阶段 2 会给同一个仓库补一条更精确的记录，写盘时按 repo 去重取后者。
+         */
+        for (const item of discovered) {
+          if (!item.triage) continue
+          recordTriage(state, { repo: item.repo, stars: item.stars, pushedAt: item.pushedAt, meta: item.meta }, item.triage, [])
+        }
+        for (const item of blocked) {
+          logger.warn(`[github-skills] 跳过 ${item.repo}：${item.triage!.reason_code} ${item.triage!.reason}`)
+        }
         queue = [
           ...explicit,
-          ...discovered.map(item =>
-            // stars 随发现结果一起带下来：搜索接口本来就会返回，无需额外请求
-            withDefaults({
+          ...admitted.map(item => {
+            const cfg = withDefaults({
               repo: item.repo,
               branch: item.branch,
               pushedAt: item.pushedAt,
               stars: item.stars,
               strict: false,
-            }),
-          ),
+            })
+            // 把阶段 1 的判定带进 loadRepo，阶段 2 才有上下文可继承
+            if (item.triage) cfg.triage = item.triage
+            if (item.meta) cfg.meta = item.meta
+            return cfg
+          }),
         ]
       }
 
@@ -326,6 +385,14 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
        * 脚本无需（也不应）复刻任何一条规则。
        */
       writeSkillManifest(state.manifest, state.rateLimited, resolved.cacheDir, context.config.root, context.logger)
+      /*
+       * 写出判定日志（JSON Lines）。
+       *
+       * 存在的意义：站点内容变多或变少时，能逐仓回答「为什么收/为什么不收」。
+       * 此前 300 个发现仓库里有一半零产出，日志里只有一行 warn，
+       * 事后无法区分「仓库没有 skill」与「抓取逻辑坏了」。
+       */
+      writeTriageLog(state.triage, resolved.cacheDir, context.config.root, context.logger)
     },
   }
 }
@@ -343,7 +410,9 @@ async function discoverRepos(
 
   if (cached && discoveryCacheFresh(cached, opts)) {
     logger.info(`[github-skills] 自动发现缓存有效（${cached.fetchedAt}，${cached.repos.length} 个仓库）`)
-    return filterDiscovered(cached.repos, opts)
+    // 缓存命中也必须跑阶段 1：否则过滤只在缓存失效那一次生效，
+    // 平时构建等于完全没接入判定
+    return withTriage(filterDiscovered(cached.repos, opts))
   }
 
   const found: DiscoveredRepo[] = []
@@ -351,7 +420,18 @@ async function discoverRepos(
     for (const topic of opts.topics) {
       const query = encodeURIComponent(`topic:${topic} fork:false archived:false stars:>=${opts.minStars}`)
       const data = await ghJson<{
-        items: Array<{ full_name: string; stargazers_count: number; pushed_at: string; default_branch?: string }>
+        items: Array<{
+          full_name: string
+          stargazers_count: number
+          pushed_at: string
+          created_at?: string
+          description?: string | null
+          language?: string | null
+          license?: { spdx_id?: string | null } | null
+          open_issues_count?: number
+          topics?: string[]
+          default_branch?: string
+        }>
       }>(`${resolved.apiBase}/search/repositories?q=${query}&sort=stars&order=desc&per_page=${SEARCH_PER_PAGE}`, resolved.token)
       for (const item of data.items ?? []) {
         found.push({
@@ -359,13 +439,28 @@ async function discoverRepos(
           stars: item.stargazers_count,
           pushedAt: item.pushed_at,
           branch: item.default_branch,
+          meta: {
+            repo: item.full_name,
+            stars: item.stargazers_count,
+            description: item.description ?? '',
+            language: item.language,
+            // 检索查询已带 fork:false archived:false，这里仍取真实值以防查询被改
+            archived: false,
+            fork: false,
+            license: item.license?.spdx_id ?? null,
+            last_push: item.pushed_at,
+            created_at: item.created_at,
+            open_issues: item.open_issues_count,
+            topics: item.topics ?? [],
+            default_branch: item.default_branch,
+          },
         })
       }
     }
   } catch (error) {
     if (cached) {
       logger.warn(`[github-skills] 自动发现请求失败，改用缓存（${cached.fetchedAt}）— ${message(error)}`)
-      return filterDiscovered(cached.repos, opts)
+      return withTriage(filterDiscovered(cached.repos, opts))
     }
     logger.warn(`[github-skills] 自动发现请求失败且无缓存，本次跳过自动发现 — ${message(error)}`)
     return []
@@ -386,9 +481,16 @@ async function discoverRepos(
   logger.info(
     `[github-skills] 自动发现 ${merged.length} 个公开仓库（主题：${opts.topics.join('、')}，≥${opts.minStars}★）`,
   )
-  return filterDiscovered(merged, opts)
+  return withTriage(filterDiscovered(merged, opts))
 }
 
+/**
+ * 合并同一仓库的多条检索结果。
+ *
+ * 刻意**不在这里**跑阶段 1：命中发现缓存时会走filterDiscovered 直接返回，
+ * 判定放在 mergeDiscovered 里就只在缓存失效时才执行一次。
+ * 判定统一交给 withTriage()，两条路径都会走到。
+ */
 function mergeDiscovered(found: DiscoveredRepo[]): DiscoveredRepo[] {
   const byRepo = new Map<string, DiscoveredRepo>()
   for (const item of found) {
@@ -397,6 +499,40 @@ function mergeDiscovered(found: DiscoveredRepo[]): DiscoveredRepo[] {
     if (!existing || item.stars > existing.stars) byRepo.set(key, item)
   }
   return [...byRepo.values()].sort((a, b) => b.stars - a.stars || a.repo.localeCompare(b.repo))
+}
+
+/**
+ * 给候选列表补上阶段 1 判定。
+ *
+ * 只有 SKIP 会让仓库离开队列；REVIEW 仍然入库 ——
+ * 实测 165/300 个发现仓库命中 S3（单仓 >5 个 skill），
+ * 而它们装着全站 98.4% 的 skill，把 REVIEW 当成「不入库」会直接掏空站点。
+ *
+ * 旧版发现缓存没有 meta 字段，此时用现有字段合成一份最小元数据：
+ * 缺字段只会让判定停在「证据不足」，不会误杀（规则对缺失字段一律降级而非拒绝）。
+ */
+function withTriage(repos: DiscoveredRepo[]): DiscoveredRepo[] {
+  return repos.map(item => {
+    if (item.meta) {
+      return { ...item, triage: item.triage ?? judgeMetadata(item.meta) }
+    }
+    /*
+     * 旧版发现缓存没有 meta 字段（升级前的格式），只能合成最小元数据。
+     *
+     * 这里必须传 allowMissingLicense：许可证我们**根本没查**，
+     * 报成「未探测到许可证 → R5」是误导 —— 而且会让 300 个仓库
+     * 在发现缓存刷新之前一直挂着同一个假标记。
+     * 「没查」和「查了没有」是两件事，规则要分得清。
+     */
+    const meta: RepoMeta = {
+      repo: item.repo,
+      stars: item.stars,
+      description: '',
+      last_push: item.pushedAt,
+      default_branch: item.branch,
+    }
+    return { ...item, meta, triage: item.triage ?? judgeMetadata(meta, { allowMissingLicense: true }) }
+  })
 }
 
 function filterDiscovered(repos: DiscoveredRepo[], opts: DiscoverOptions): DiscoveredRepo[] {
@@ -518,11 +654,52 @@ async function loadRepo(
     logger.warn(`[github-skills] ${cfg.repo}: ${files.length} 个 skill 超过上限 ${repoCap}，取路径排序前 ${repoCap} 个`)
     files = files.slice(0, repoCap)
   }
+
+  const treeUnchanged = !cacheOnly && cached != null && cached.ref === ref && cached.treeSha === treeSha
+
+  /*
+   * 阶段 2：轻量文件探测。
+   *
+   * 只在「自动发现且未显式豁免」的仓库上跑 —— 手工配置的仓库不受影响。
+   * 复用已经取到的文件树，**不额外请求**；README 只在必要时读一次（见下），
+   * 判定结果写进缓存，仓库未变更时复用。
+   */
+  if (cfg.triage && !cfg.exemptFromTriage && !state.rateLimited) {
+    // 文件树与上次一致时，判定结论也不会变，直接复用缓存里的
+    const cachedVerdict = cacheOnly || treeUnchanged ? cached?.triage : undefined
+    if (cachedVerdict) {
+      cfg.triage = cachedVerdict
+      recordTriage(state, cfg, cachedVerdict, cached ? cachedFileList(cached.files).map(f => f.path) : [])
+      if (cachedVerdict.decision === 'SKIP') {
+        logger.warn(`[github-skills] ${cfg.repo}: 阶段 2 判定 SKIP（${cachedVerdict.reason_code}），沿用缓存结论`)
+        return 0
+      }
+    } else {
+      const probe = await buildProbe(cfg, ref, files, opts, config.root, logger)
+      const verdict = probe ? judgeProbe(probe, cfg.triage, { knownRepos: knownSkillPaths(opts.cacheDir, config.root) }) : null
+      if (verdict) {
+        cfg.triage = verdict
+        recordTriage(state, cfg, verdict, verdict.decision === 'SKIP' ? [] : files.map(f => f.path))
+        if (verdict.decision === 'SKIP') {
+          logger.warn(`[github-skills] ${cfg.repo}: 阶段 2 判定 SKIP（${verdict.reason_code} ${verdict.reason}）`)
+          // 判定为不要：清掉语料缓存，避免下次构建继续用旧内容
+          if (cached) {
+            try {
+              fs.unlinkSync(cacheFile)
+            } catch (error) {
+              logger.warn(`[github-skills] ${cfg.repo}: 清理语料缓存失败 — ${message(error)}`)
+            }
+          }
+          return 0
+        }
+      }
+    }
+  }
+
   if (files.length === 0) {
     logger.warn(`[github-skills] ${cfg.repo}: 未发现 SKILL.md（检查 path/skip 配置）`)
   }
 
-  const treeUnchanged = !cacheOnly && cached != null && cached.ref === ref && cached.treeSha === treeSha
   const nextFiles: Record<string, CachedFile> = {}
   const entries = new Array<CachedFile | undefined>(files.length)
   /** 网络 / 限流类失败（下次构建自动重试） */
@@ -632,6 +809,17 @@ async function loadRepo(
     loaded++
   }
 
+  /*
+   * 收尾再记一次：把「实际收录了哪些文件」写进判定日志。
+   *
+   * 阶段 1/2 的记录只知道文件树；限流降级或缓存复用时更是根本没跑阶段 2。
+   * 只有走到这里才知道真正入库了什么 —— fetched 字段必须反映真实结果，
+   * 否则日志会声称「未抓取」而清单里明明有它。
+   */
+  if (cfg.triage) {
+    recordTriage(state, cfg, cfg.triage, Object.keys(nextFiles))
+  }
+
   // 有文件拉取失败时不写入 pushedAt：下次构建视为「未变更检测失效」，
   // 重新拉取文件树并重试失败的文件（已成功的文件仍走缓存，不重复下载）。
   const partial = failures.size > 0
@@ -646,6 +834,8 @@ async function loadRepo(
         treeSha,
         pushedAt: partial ? undefined : cfg.pushedAt,
         cappedFiles: cappedFiles ? true : undefined,
+        // 阶段 2 判定随缓存保存：仓库未变更时复用，省掉每次构建重读 README
+        triage: cfg.triage,
         fetchedAt: new Date().toISOString(),
         files: nextFiles,
       })
@@ -659,6 +849,111 @@ async function loadRepo(
       (skippedFetch ? '（仓库未更新，全部来自缓存）' : ''),
   )
   return loaded
+}
+
+/**
+ * 记录（或覆盖）某个仓库的判定。
+ *
+ * 同一个仓库可能先在入队时记一条阶段 1、之后阶段 2 再记一条，
+ * 也可能只走阶段 1（限流降级 / 缓存复用）。按 repo 覆盖，
+ * 保留最后一次也是最精确的那条。
+ */
+function recordTriage(state: LoadState, cfg: RemoteRepo, verdict: Verdict, fetchedFiles: string[]): void {
+  const repo = cfg.repo.toLowerCase()
+  const meta = metaOf(cfg)
+  const index = state.triage.findIndex(r => r.meta.repo.toLowerCase() === repo)
+  const record: TriageRecord = { meta, verdict, fetchedFiles }
+  if (index >= 0) state.triage[index] = record
+  else state.triage.push(record)
+}
+
+/* ------------------------------ 判定辅助 ------------------------------ */
+
+/** 把 RemoteRepo 拼成判定与日志用的 RepoMeta */
+function metaOf(cfg: RemoteRepo): RepoMeta {
+  return (
+    cfg.meta ?? {
+      repo: cfg.repo,
+      stars: cfg.stars ?? 0,
+      description: '',
+      last_push: cfg.pushedAt,
+    }
+  )
+}
+
+/**
+ * 汇总语料缓存里已有的 skill 路径，供 S8 重复条目判定。
+ *
+ * 只读缓存、不发请求；缓存目录里可能没有文件，此时返回空集，
+ * S8 自然不触发 —— 宁可漏标记，也不要因为读不到就误判重复。
+ */
+function knownSkillPaths(cacheDir: string | URL | undefined, root: URL): Set<string> {
+  const out = new Set<string>()
+  try {
+    for (const name of fs.readdirSync(cacheDirPath(cacheDir, root))) {
+      if (!name.endsWith('.json') || name === DISCOVERY_CACHE_FILE) continue
+      try {
+        const parsed = JSON.parse(fs.readFileSync(path.join(cacheDirPath(cacheDir, root), name), 'utf8')) as CacheFile
+        for (const p of Object.keys(parsed.files ?? {})) out.add(p.toLowerCase())
+      } catch {
+        // 单个缓存损坏不影响其它
+      }
+    }
+  } catch {
+    // 缓存目录还不存在（首次构建）
+  }
+  return out
+}
+
+/**
+ * 阶段 2 的探测输入。
+ *
+ * 关键取舍：**只有仓库确实存在 SKILL.md 时才去读 README**。
+ * 没有 SKILL.md 的仓库阶段 1 的 R1 就能定案（judgeProbe 会先判 skillFiles.length === 0），
+ * 为此多花一次 raw 请求纯属浪费 —— 实测 300 个发现仓库里有 31 个属于这种情况。
+ *
+ * 返回 null 表示「信息不足、不下结论」，此时调用方保留阶段 1 的判定。
+ */
+async function buildProbe(
+  cfg: RemoteRepo,
+  ref: string,
+  files: Array<{ path: string; sha: string }>,
+  opts: ResolvedOptions,
+  root: URL,
+  logger: LoaderContext['logger'],
+): Promise<RepoProbe | null> {
+  const skillFiles = files.map(f => f.path)
+  let readme = ''
+  if (skillFiles.length > 0) {
+    const candidates = ['README.md', 'readme.md', 'README.rst', 'README.txt']
+    for (const name of candidates) {
+      try {
+        readme = await fetchRaw(opts.rawBase, cfg.repo, ref, name, opts.token)
+        if (readme) break
+      } catch {
+        // 试下一个候选名
+      }
+    }
+    if (!readme) {
+      logger.info(`[github-skills] ${cfg.repo}: 未取到 README，阶段 2 按「无 README」判定`)
+    }
+  }
+
+  const [owner, name] = cfg.repo.split('/')
+  const cached = readCache(cacheFilePath(opts.cacheDir, root, owner, name ?? ''))
+  // token 估算复用缓存里的正文长度，避免为了估算把 SKILL.md 再下载一遍
+  const bodyChars = skillFiles.reduce((sum, f) => sum + (cached?.files?.[f]?.body?.length ?? 0), 0)
+
+  return {
+    paths: skillFiles,
+    readme: readme.slice(0, 2_000),
+    readmeLength: readme.length,
+    skillFiles,
+    referenceFiles: [],
+    scriptFiles: [],
+    // 缓存里没有正文时用文件名长度兜底，至少能区分「空文件」与「有内容」
+    totalTokens: estimateTokens('x'.repeat(bodyChars || skillFiles.length * 64)),
+  }
 }
 
 /* ------------------------------ 字段映射 ------------------------------ */
@@ -932,6 +1227,38 @@ function writeSkillManifest(
 function writeDiscoveryCache(file: string, data: DiscoveryCacheFile): void {
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, JSON.stringify(data), 'utf8')
+}
+
+/**
+ * 写出判定日志（JSON Lines，每行一个仓库）。
+ *
+ * 与技能清单不同：这份文件**不参与增量判定**，每次构建无条件重写，
+ * 内容反映的是「这一次为什么收 / 为什么不收」。
+ */
+function writeTriageLog(
+  records: TriageRecord[],
+  cacheDir: string | URL | undefined,
+  root: URL,
+  logger: LoaderContext['logger'],
+): void {
+  if (records.length === 0) return
+  const file = path.join(cacheDirPath(cacheDir, root), TRIAGE_LOG_FILE)
+  const tally = { PASS: 0, REVIEW: 0, SKIP: 0 } as Record<string, number>
+  // recordTriage 已按 repo 覆盖，这里每个仓库最多一条
+  const lines = records.map(record => {
+    tally[record.verdict.decision] = (tally[record.verdict.decision] ?? 0) + 1
+    return toJsonLine(record.meta, record.verdict, record.fetchedFiles ?? [])
+  })
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, `${lines.join('\n')}\n`, 'utf8')
+    logger.info(
+      `[github-skills] 判定日志：PASS ${tally.PASS} / REVIEW ${tally.REVIEW} / SKIP ${tally.SKIP} → ${path.relative(fileURLToPath(root), file)}`,
+    )
+  } catch (error) {
+    // 判定日志只用于排查，写失败不该让构建失败
+    logger.warn(`[github-skills] 判定日志写入失败 — ${message(error)}`)
+  }
 }
 
 function message(error: unknown): string {
