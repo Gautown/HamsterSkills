@@ -12,6 +12,7 @@
 import { getCollection } from 'astro:content'
 import { CATEGORY_KEYS, CATEGORY_NAMES } from '../lib/categories'
 import { tagSlug } from '../lib/tags'
+import { baseOf, homePathOf, searchPathOf } from '../lib/site-paths'
 import { T, type Locale } from '../i18n/translations'
 
 interface Props {
@@ -20,7 +21,7 @@ interface Props {
 
 const { lang } = Astro.props
 const t = T[lang]
-const base = lang === 'en' ? '/en' : ''
+const base = baseOf(lang)
 const pathname = Astro.url.pathname
 const altPath = lang === 'en' ? pathname.replace(/^\/en/, '') || '/' : `/en${pathname}`
 
@@ -66,8 +67,16 @@ const { categories, tags } = await navData()
 const isActive = (href: string) =>
   href === (base || '/') ? pathname === '/' || pathname === base || pathname === `${base}/` : pathname.startsWith(href)
 
-/** 首页地址：非首页页面提交搜索时跳转到这里，由 HomePage 读取 ?search= 过滤 */
-const homePath = base || '/'
+/** 首页地址：品牌链接与「已在首页就地筛选」的判据都用它 */
+const homePath = homePathOf(lang)
+/**
+ * 搜索结果页地址。
+ *
+ * 原来表单 action 指向首页，只有首页才有筛选脚本，
+ * 于是从技能详情页/标签页/分类页提交搜索会跳回首页，
+ * 用户得自己再点一次搜索才能看到结果。现在全站都指向搜索结果页。
+ */
+const searchPath = searchPathOf(lang)
 /** 已在首页时直接就地筛选，不必跳转 */
 const onHome = pathname === '/' || pathname === homePath || pathname === `${homePath}/`
 const currentQuery = Astro.url.searchParams.get('search') ?? ''
@@ -82,10 +91,10 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
 
     {/*
       全站搜索框：占据品牌与导航之间的剩余空间。
-      真正的筛选逻辑只在首页（依赖 #skill-grid），所以非首页提交时
-      跳转首页并带上 ?search= 参数，由 HomePage 读取后过滤。
+      提交一律跳到搜索结果页（该页自带完整索引与 IDF 检索），
+      首页的 ?search= 过滤保留，用于「已在首页时直接就地筛选」。
     */}
-    <form class="nav-search" id="nav-search" role="search" action={homePath} method="get">
+    <form class="nav-search" id="nav-search" role="search" action={searchPath} method="get">
       <input
         id="nav-search-input"
         type="search"
@@ -198,7 +207,7 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
   <div class="nav-mobile" id="nav-mobile" hidden>
     <div class="container">
       {/* 窄屏下导航栏搜索框隐藏，改由这里提供 */}
-      <form class="nav-search nav-search-mobile" id="nav-search-mobile" role="search" action={homePath} method="get">
+      <form class="nav-search nav-search-mobile" id="nav-search-mobile" role="search" action={searchPath} method="get">
         <input
           type="search"
           name="search"
@@ -299,14 +308,20 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
 
   /* ---------- 全站搜索 ---------- */
   /*
-   * 已在首页时不跳转，直接派发 custom event 让 HomePage 就地过滤（避免整页重载）；
-   * 非首页则走 <form action> 正常跳转到首页并带上 ?search=。
+   * 三种情况：
+   *   已在搜索结果页 → 派发 hamster:search，由该页就地换查询词（不重载）
+   *   已在首页       → 派发 hamster:search，由 HomePage 就地过滤（不重载）
+   *   其它页面      → 走 <form action> 正常跳到 /search/?search=xxx
+   *
+   * 原先非首页一律跳回首页，但首页要用户再点一次搜索才真正筛选，
+   * 等于搜索框在 8809 个技能详情页 + 数千个标签/分类页上都是半残的。
    */
   const searchForm = document.getElementById('nav-search') as HTMLFormElement | null
   const searchInput = document.getElementById('nav-search-input') as HTMLInputElement | null
   const mobileInput = document.querySelector<HTMLInputElement>('.nav-search-mobile input')
-  const homePath = searchForm?.getAttribute('action') || '/'
   const onHomePage = /^\/(en\/?)?$/.test(location.pathname)
+  const onSearchPage = /^\/(en\/)?search\/?$/.test(location.pathname)
+  const canFilterInPlace = onHomePage || onSearchPage
 
   /*
    * 静态站点在构建期不知道用户会带什么查询参数，所以 value 只能在客户端回填。
@@ -320,7 +335,7 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
 
   if (searchForm && searchInput) {
     searchForm.addEventListener('submit', e => {
-      if (!onHomePage) return // 跨页：交给浏览器默认提交
+      if (!canFilterInPlace) return // 跨页：交给浏览器默认提交到 /search/
       e.preventDefault()
       const q = searchInput.value.trim()
       // 同步到地址栏，便于分享/刷新后保留条件
@@ -337,7 +352,7 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
   const mobileForm = document.getElementById('nav-search-mobile') as HTMLFormElement | null
   if (mobileForm && mobileInput) {
     mobileForm.addEventListener('submit', e => {
-      if (!onHomePage) return
+      if (!canFilterInPlace) return
       e.preventDefault()
       const q = mobileInput.value.trim()
       const url = new URL(location.href)

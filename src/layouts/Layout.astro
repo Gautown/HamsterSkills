@@ -23,6 +23,15 @@ interface Props {
   /** og:type；详情页传 article 类语义，其余留空按 website */
   ogType?: string
   /**
+   * 禁止索引。搜索结果页用：内容由 URL 参数决定，没有稳定内容可抓，
+   * 参数页若被索引会造成大量重复内容。
+   */
+  noindex?: boolean
+  /** 注入给客户端脚本的文案包（JSON 字符串） */
+  i18n?: string
+  /** 注入给客户端脚本的卡片渲染配置（JSON 字符串） */
+  cards?: string
+  /**
    * 当前页面的技能信息。仅技能详情页传入，
    * 聊天窗会把它作为上下文发给后端，让回答能结合这条技能展开。
    */
@@ -34,7 +43,7 @@ interface Props {
   }
 }
 
-const { lang, title, description, path, alternate, ogType, skill } = Astro.props
+const { lang, title, description, path, alternate, ogType, noindex, i18n, cards, skill } = Astro.props
 const t = T[lang]
 
 /*
@@ -76,6 +85,7 @@ const alternateHref = alternate ? new URL(alternate.href, SITE_ORIGIN).href : nu
       } catch {}
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    {noindex && <meta name="robots" content="noindex, follow" />}
     <meta name="description" content={pageDesc} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
@@ -110,7 +120,10 @@ const alternateHref = alternate ? new URL(alternate.href, SITE_ORIGIN).href : nu
 
     <title>{pageTitle}</title>
   </head>
-  <body>
+  <body
+    data-i18n={i18n}
+    data-cards={cards}
+  >
     <Header lang={lang} />
     <main>
       <slot />

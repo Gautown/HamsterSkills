@@ -150,20 +150,11 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
 </div>
 
 <script>
-  interface IndexItem {
-    id: string
-    title: string
-    titleEn: string
-    desc: string
-    descEn: string
-    category: string
-    tags: string[]
-    grade: string | null
-    score: number | null
-    likes: number | null
-    gh: boolean
-    prompt: boolean
-  }
+  // 卡片渲染抽到 skill-card.mjs：搜索结果页渲染同样的卡片，
+  // 复制一份必然随改卡片样式而漂移。
+  import { cardHtml as renderCardHtml } from '../lib/skill-card.ts'
+
+  type IndexItem = import('../lib/skill-card.ts').IndexItem
   interface IndexLabels {
     base: string
     locale: 'zh' | 'en'
@@ -191,46 +182,7 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
   let loaded = false
   let loadState: 'idle' | 'loading' | 'error' = 'idle'
 
-  const escapeHtml = (value: string): string =>
-    value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch)
-
-  function cardHtml(item: IndexItem, rank: number): string {
-    const title = labels.locale === 'en' ? item.titleEn : item.title
-    const desc = labels.locale === 'en' ? item.descEn : item.desc
-    const catNames = labels.locale === 'en' ? labels.catEn : labels.catZh
-    const blob = [
-      item.title,
-      item.titleEn,
-      item.desc,
-      item.descEn,
-      item.tags.join(' '),
-      labels.catZh[item.category] ?? '',
-      labels.catEn[item.category] ?? '',
-    ]
-      .join(' ')
-      .toLowerCase()
-    const pills = [
-      item.grade ? `<span class="grade-mini g-${escapeHtml(item.grade)}">${escapeHtml(item.grade)}</span>` : '',
-      item.score != null ? `<span class="score-mini">${escapeHtml(String(item.score))}</span>` : '',
-      item.gh ? `<span class="pill">${escapeHtml(labels.githubLabel)}</span>` : '',
-      item.prompt ? `<span class="pill">${escapeHtml(labels.copyPrompt)}</span>` : '',
-    ].join('')
-    const tags = item.tags.length
-      ? `<div class="tags">${item.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}</div>`
-      : ''
-    const foot = item.tags.length > 1 ? item.tags.slice(1, 3).join(' · ') : ''
-    return (
-      `<li class="card" data-category="${escapeHtml(item.category)}" data-search="${escapeHtml(blob)}"` +
-      ` data-score="${Number(item.score) || 0}" data-likes="${Number(item.likes) || 0}">` +
-      `<a class="card-link" href="${labels.base}/skills/${escapeHtml(item.id)}">` +
-      `<div class="card-head"><div class="card-rank">${String(rank).padStart(2, '0')}</div>` +
-      `<div class="card-head-main">${pills}</div></div>` +
-      `<div class="card-body"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(desc)}</p>${tags}</div>` +
-      `<div class="card-foot"><span class="foot-cat">${escapeHtml(catNames[item.category] ?? item.category)}</span>` +
-      `<span class="foot-cat">${escapeHtml(foot)}</span></div>` +
-      `</a></li>`
-    )
-  }
+  const cardHtml = (item: IndexItem, rank: number) => renderCardHtml(item, rank, labels)
 
   async function loadAll(): Promise<void> {
     if (loaded || loadState === 'loading' || !grid) return

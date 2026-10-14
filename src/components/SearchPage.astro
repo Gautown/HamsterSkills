@@ -1,0 +1,397 @@
+---
+/**
+ * 搜索结果页。
+ *
+ * 之前全站只有首页能真正搜索：页头搜索框在技能详情页、标签页、
+ * 分类页提交后会跳回首页带 ?search=，用户必须自己再点一次搜索，
+ * 否则看到的是未筛选的首页。本页让搜索在全站任何位置都成立。
+ *
+ * 匹配用「子串 + IDF」两路合并，各补对方的短板（实测 8780 条语料）：
+ *   子串  「爬虫」命中   0 条 —— 站内 95% 描述是英文，逐字匹配必然落空
+ *   IDF   「爬虫」命中   8 条 —— 经别名表 crawl/scrape/scraping 桥接
+ *   子串  「test」命中 556 条 —— 全量召回，不截断
+ *   IDF   「test」命中  10 条 —— top-K 截断，长尾丢失
+ * 所以：IDF 决定「相关性高的排前面」，子串负责「不漏」，
+ * 两路取并集后按 IDF 分数排序，分数相同则保持索引原序（稳定）。
+ */
+import Layout from '../layouts/Layout.astro'
+import { T, type Locale } from '../i18n/translations'
+import { CATEGORY_NAMES } from '../lib/categories'
+
+interface Props {
+  lang: Locale
+}
+
+const { lang } = Astro.props
+const t = T[lang]
+const base = lang === 'en' ? '/en' : ''
+
+/*
+ * 结果页不参与索引：内容由 URL 参数决定，没有稳定内容可抓，
+ * 且参数页若被索引会造成大量重复内容。
+ */
+const labels = {
+  locale: lang,
+  base,
+  catZh: CATEGORY_NAMES.zh,
+  catEn: CATEGORY_NAMES.en,
+  githubLabel: t.githubLabel,
+  copyPrompt: t.copy,
+}
+
+/** 注入给客户端脚本的文案包 */
+const strings = {
+  loading: t.searchLoading,
+  failed: t.searchFailed,
+  noResult: t.searchNoResult,
+  hint: t.searchHint,
+  hitCount: t.searchHitCount,
+}
+---
+
+<Layout
+  lang={lang}
+  path={`${base}/search/`}
+  noindex
+  i18n={JSON.stringify(strings)}
+  cards={JSON.stringify(labels)}
+>
+  <div class="container">
+    <p class="eyebrow">{t.searchEyebrow}</p>
+    <h1 class="search-title">{t.searchTitle}</h1>
+
+    <form class="search-box" id="search-form" role="search">
+      <input
+        class="search-box-input"
+        id="search-input"
+        type="search"
+        name="search"
+        autocomplete="off"
+        placeholder={t.searchPlaceholder}
+        aria-label={t.searchPlaceholder}
+      />
+      <button class="search-box-btn" type="submit">{t.searchBtn}</button>
+    </form>
+
+    <p class="search-status" id="search-status" role="status" aria-live="polite"></p>
+
+    <div id="search-stage">
+      <ul class="grid" id="search-grid"></ul>
+      <p class="search-empty hidden" id="search-empty">
+        {t.searchNoResult}
+        <button class="search-clear" type="button" id="search-clear">{t.searchClear}</button>
+      </p>
+    </div>
+
+    <div class="search-idle" id="search-idle">
+      <p class="search-idle-text">{t.searchIdleHint}</p>
+      {/* 复用首页的快捷词与样式（.try-links / .tryLabel / .tryLinks），不另造一套词表 */}
+      <div class="try-links" id="search-try">
+        <span class="label">{t.tryLabel}</span>
+        {t.tryLinks.map((word: string) => (
+          <button type="button" data-try={word}>{word}</button>
+        ))}
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  import { cardHtml, searchBlob } from '../lib/skill-card.ts'
+  import { buildIndex, search as idfSearch, toSearchable } from '../lib/search-index.mjs'
+
+  type IndexItem = import('../lib/skill-card.ts').IndexItem
+
+  const root = document.querySelector<HTMLElement>('[data-i18n]')
+  const LABELS = JSON.parse(root?.dataset.i18n ?? '{}')
+  const CARD = JSON.parse(root?.dataset.cards ?? '{}')
+
+  interface CardLabels {
+    locale: 'zh' | 'en'
+    base: string
+    catZh: Record<string, string>
+    catEn: Record<string, string>
+    githubLabel: string
+    copyPrompt: string
+  }
+
+  const STRINGS = {
+    loading: LABELS.loading ?? '加载中…',
+    failed: LABELS.failed ?? '加载失败',
+    noResult: LABELS.noResult ?? '没有匹配的技能',
+    hint: LABELS.hint ?? '换个关键词试试，或从下面的常用词开始',
+    hitCount: LABELS.hitCount ?? '找到 {n} 个技能',
+  }
+
+  const form = document.getElementById('search-form') as HTMLFormElement | null
+  const input = document.getElementById('search-input') as HTMLInputElement | null
+  const status = document.getElementById('search-status')
+  const grid = document.getElementById('search-grid')
+  const empty = document.getElementById('search-empty')
+  const idle = document.getElementById('search-idle')
+  const clearBtn = document.getElementById('search-clear')
+  if (!form || !input || !status || !grid || !empty || !idle) throw new Error('搜索页结构缺失')
+
+  const labels: CardLabels = {
+    locale: CARD.locale ?? 'zh',
+    base: CARD.base ?? '',
+    catZh: CARD.catZh ?? {},
+    catEn: CARD.catEn ?? {},
+    githubLabel: CARD.githubLabel ?? '',
+    copyPrompt: CARD.copyPrompt ?? '',
+  }
+
+  let items: IndexItem[] = []
+  /** 倒排索引只构建一次：8780 条实测几十毫秒，但每次按键重建会卡到无法输入 */
+  let idfIndex: ReturnType<typeof buildIndex> | null = null
+  /**
+   * 子串路的检索文本，与 items 同序，索引加载时算一次。
+   *
+   * 实测每次按键现场调 searchBlob 要对 8,796 条各拼一次字符串再 toLowerCase，
+   * 单次查询约 490ms（已扣防抖）——「换一个词」的延迟肉眼可见。
+   * 预计算后只剩一次 includes，代价可忽略。
+   */
+  let blobs: string[] = []
+  let loading = false
+  let loadError = false
+
+  async function ensureIndex() {
+    if (items.length || loading) return
+    loading = true
+    status.textContent = STRINGS.loading
+    try {
+      const res = await fetch('/skills-index.json', { headers: { accept: 'application/json' } })
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const data = (await res.json()) as { items: IndexItem[] }
+      items = data.items
+      blobs = items.map((it) => searchBlob(it, labels))
+      idfIndex = buildIndex(toSearchable(items))
+      loadError = false
+    } catch {
+      loadError = true
+      status.textContent = STRINGS.failed
+    } finally {
+      loading = false
+    }
+  }
+
+  /** 两路合并：子串兜长尾，IDF 提排序 */
+  function rank(query: string): IndexItem[] {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+
+    // 第 1 路：子串，命中即算，不截断 —— 兜住「test」这类 500+ 命中的长尾
+    // 用预计算的 blobs，别在按键路径上重拼字符串
+    const substringHits: IndexItem[] = []
+    for (let i = 0; i < items.length; i++) {
+      if (blobs[i].includes(q)) substringHits.push(items[i])
+    }
+
+    // 第 2 路：IDF，负责跨语言召回（「爬虫」→ crawl/scrape，子串命中 0 条）
+    // search() 返回的是 {id, score}，不含卡片字段，所以要按 id 回表。
+    // cjkWholeOnly：搜索结果直接给人看，误命中比没结果更糟。
+    // 注意 search 的签名是 (index, query, k, opts)，opts 是第四参。
+    const idfHits = idfIndex ? idfSearch(idfIndex, q, 200, { cjkWholeOnly: true }) : []
+    const byId = new Map(items.map(it => [it.id, it]))
+    const idfScore = new Map<string, number>()
+    const idfOrder = new Map<string, number>()
+    const idfItems: IndexItem[] = []
+    idfHits.forEach((h, i) => {
+      const item = byId.get(h.id)
+      // byId 里没有说明索引与列表不同源，跳过而不是塞 undefined 进结果
+      if (!item) return
+      idfScore.set(h.id, h.score)
+      idfOrder.set(h.id, i)
+      idfItems.push(item)
+    })
+
+    // 并集：IDF 命中的按分数降序在前，子串独有的追加在后
+    const merged = new Map<string, IndexItem>()
+    for (const item of idfItems) merged.set(item.id, item)
+    for (const item of substringHits) if (!merged.has(item.id)) merged.set(item.id, item)
+
+    return [...merged.values()].sort((a, b) => {
+      const sa = idfScore.get(a.id) ?? -1
+      const sb = idfScore.get(b.id) ?? -1
+      if (sa !== sb) return sb - sa
+      // 分数相同（都是子串独有）时按 IDF 出现顺序，保证结果稳定
+      const ia = idfOrder.get(a.id)
+      const ib = idfOrder.get(b.id)
+      if (ia !== undefined && ib !== undefined) return ia - ib
+      return 0
+    })
+  }
+
+  function render(query: string) {
+    const q = query.trim()
+    idle.classList.toggle('hidden', Boolean(q))
+    if (!q) {
+      grid.innerHTML = ''
+      empty.classList.add('hidden')
+      status.textContent = ''
+      return
+    }
+    const results = rank(q)
+    grid.innerHTML = results
+      .map((item, i) => cardHtml(item, i + 1, labels))
+      .join('')
+    empty.classList.toggle('hidden', results.length > 0)
+    status.textContent = loadError
+      ? STRINGS.failed
+      : results.length
+        ? STRINGS.hitCount.replace('{n}', String(results.length))
+        : `${STRINGS.noResult} — ${STRINGS.hint}`
+  }
+
+  async function run(query: string) {
+    await ensureIndex()
+    render(query)
+  }
+
+  function syncUrl(query: string) {
+    const url = new URL(location.href)
+    if (query.trim()) url.searchParams.set('search', query.trim())
+    else url.searchParams.delete('search')
+    history.replaceState(null, '', url)
+  }
+
+  form.addEventListener('submit', (e: Event) => {
+    e.preventDefault()
+    const q = input.value
+    syncUrl(q)
+    void run(q)
+  })
+
+  // 输入即搜：结果页不像首页有 150 张内联卡片，全部结果都是异步出来的
+  let timer: ReturnType<typeof setTimeout> | undefined
+  input.addEventListener('input', () => {
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      syncUrl(input.value)
+      void run(input.value)
+    }, 220)
+  })
+
+  input.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && input.value) {
+      e.preventDefault()
+      input.value = ''
+      syncUrl('')
+      void run('')
+    }
+  })
+
+  clearBtn?.addEventListener('click', () => {
+    input.value = ''
+    syncUrl('')
+    void run('')
+    input.focus()
+  })
+
+  for (const b of document.querySelectorAll<HTMLElement>('#search-try button')) {
+    b.addEventListener('click', () => {
+      input.value = b.dataset.try ?? ''
+      syncUrl(input.value)
+      void run(input.value)
+    })
+  }
+
+  // 首屏：直接支持 /search?q=xxx（可分享、可刷新）
+  const initial = new URLSearchParams(location.search).get('search') ?? ''
+  if (initial) {
+    input.value = initial
+    void run(initial)
+  } else {
+    idle.classList.remove('hidden')
+  }
+
+  // 页头搜索框回车后跳到本页（Header 原本跳首页）
+  window.addEventListener('hamster:search', (e: Event) => {
+    const q = (e as CustomEvent<string>).detail ?? ''
+    input.value = q
+    syncUrl(q)
+    void run(q)
+  })
+</script>
+
+<style is:global>
+  .search-title {
+    margin: 0 0 16px;
+    font-size: 30px;
+  }
+
+  .search-box {
+    display: flex;
+    gap: 8px;
+    max-width: 640px;
+  }
+
+  .search-box-input {
+    flex: 1;
+    min-width: 0;
+    padding: 11px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 15px;
+  }
+
+  .search-box-input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent);
+  }
+
+  .search-box-btn {
+    padding: 11px 20px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .search-box-btn:hover {
+    background: var(--accent-hover);
+  }
+
+  .search-status {
+    margin: 12px 0 18px;
+    min-height: 1.3em;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .search-empty {
+    padding: 32px 0;
+    text-align: center;
+    color: var(--muted);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+  }
+
+  .search-clear {
+    margin-left: 10px;
+    padding: 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .search-idle {
+    margin-top: 26px;
+    padding: 26px 0;
+  }
+
+  .search-idle-text {
+    margin: 0 0 14px;
+    color: var(--muted);
+  }
+</style>

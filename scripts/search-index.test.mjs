@@ -94,6 +94,110 @@ test('tokenize：空输入返回空数组', () => {
   assert.deepEqual(tokenize(undefined), [])
 })
 
+test('search：默认保留 OOV 词（聊天场景需要它兜底）', () => {
+  /*
+   * 服务端聊天故意保留「语料里没有的词」：
+   * 用户问「Kaggle 竞赛」时，即使没有 Kaggle，
+   * 靠「竞赛」这条命中也能给出候选，模型自己判断相关性。
+   */
+  const index = buildIndex([
+    { id: 'comp', title: '竞赛工具', desc: '比赛日程管理', tags: [], category: 'x' },
+  ])
+  const hits = search(index, 'Kaggle 竞赛')
+  assert.ok(hits.length > 0, '宽松模式下 OOV 词不应让结果清零')
+})
+
+/**
+ * 造一份够大的语料，让倒排不被 cutoff 清空。
+ *
+ * cutoff 会剔除「出现在半数以上文档里、且词长 ≤2」的词元。
+ * 小语料里几乎每个词都过半，倒排会被清空 —— 实测 21 条时
+ * 「存在」和「pdf」全被剔除，测试写什么都是空转。
+ * 生产语料 8,780 条不会有这个问题，这里造同量级。
+ */
+function bigCorpus(targets) {
+  const filler = Array.from({ length: 200 }, (_, i) => ({
+    id: `filler-${i}`,
+    title: `Filler Skill ${i}`,
+    desc: `auxiliary utility number ${i} for routine chores`,
+    tags: [],
+    category: 'x',
+  }))
+  return buildIndex([...targets, ...filler])
+}
+
+test('★ search：cjkWholeOnly 挡掉否定短语被劈出的误命中', () => {
+  /*
+   * 回归：搜「不存在」在真实语料（8,796 条）上命中 4 条技能，
+   * 全部由「存在」这一个二元组贡献 —— 二元组切分把否定短语劈成了两半，
+   * 「不存在」的「不」被丢掉，剩「存在」成了独立查询词。
+   *
+   * 探针实测：terms = [不存, 存在]，「不存」df=0，「存在」df=4 → 4 条命中。
+   * cjkWholeOnly 下整串「不存在」不在倒排 → 弃用二元组，只留别名展开的
+   * 拉丁词元，而「不存在」没有别名 → 0 命中。
+   */
+  const index = bigCorpus([
+    // 这条的描述里写着「存在」，正是被误命中的那类文档
+    { id: 'has-existence', title: 'Planning With Files', desc: '判断文件是否存在', tags: [], category: 'x' },
+  ])
+
+  const strict = search(index, '不存在', 50, { cjkWholeOnly: true })
+  assert.equal(strict.length, 0, `应无结果，实际：${strict.map(h => h.id).join(', ')}`)
+
+  // 确认默认（聊天）模式确实会误命中 —— 否则这条测试是空转
+  const loose = search(index, '不存在', 50)
+  assert.ok(
+    loose.some((h) => h.id === 'has-existence'),
+    `默认模式应误命中 has-existence，实际：${loose.map(h => h.id).join(', ') || '(无)'}`,
+  )
+})
+
+test('search：cjkWholeOnly 不破坏中文别名召回', () => {
+  /*
+   * cjkWholeOnly 会丢掉全部二元组，唯一还能用的召回路径是别名展开。
+   * 若 ZH_ALIASES 失效，「爬虫」这类查询会从有结果变成 0 结果 ——
+   * 实测真实语料上「爬虫」靠别名命中 8 条。
+   */
+  const index = bigCorpus([
+    { id: 'crawler', title: 'Web Crawler', desc: 'scrape and crawl websites', tags: [], category: 'x' },
+  ])
+
+  const hits = search(index, '爬虫', 50, { cjkWholeOnly: true })
+  assert.ok(hits.length > 0, '中文别名召回不应被 cjkWholeOnly 破坏')
+  assert.ok(
+    hits.some((h) => h.id === 'crawler'),
+    `应命中 crawler，实际：${hits.map(h => h.id).join(', ') || '(无)'}`,
+  )
+})
+
+test('search：cjkWholeOnly 对整串已收录的查询无影响', () => {
+  // 整串在倒排里时，二元组本来就该照常参与召回
+  const index = bigCorpus([
+    { id: 'pdf-main', title: 'PDF 处理', desc: 'split merge extract pdf file', tags: ['pdf'], category: 'x' },
+    { id: 'img', title: '图像处理', desc: 'resize crop image', tags: ['image'], category: 'x' },
+  ])
+  const loose = search(index, 'pdf', 50)
+  const strict = search(index, 'pdf', 50, { cjkWholeOnly: true })
+  assert.ok(strict.length > 0, 'pdf 是已知词元，应有结果')
+  assert.deepEqual(
+    strict.map(h => h.id),
+    loose.map(h => h.id),
+    '纯拉丁查询不受 cjkWholeOnly 影响',
+  )
+})
+
+test('search：cjkWholeOnly 保留整串已收录的中文查询', () => {
+  // 「数据分析」整串就在倒排里 → 二元组照常参与，召回不降
+  const index = bigCorpus([
+    { id: 'da', title: '数据分析工具', desc: 'analyze data sets', tags: ['数据分析'], category: 'x' },
+  ])
+  const strict = search(index, '数据分析', 50, { cjkWholeOnly: true })
+  assert.ok(
+    strict.some(h => h.id === 'da'),
+    `整串已收录时应有结果，实际：${strict.map(h => h.id).join(', ') || '(无)'}`,
+  )
+})
+
 /* ------------------------------ buildIndex ------------------------------ */
 
 /** 取出某篇文档的词项键集合 */
