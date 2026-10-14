@@ -351,8 +351,9 @@ test('handleChat：上游持续 429 映射为 429（服务商限流，与本站�
     assert.equal(res.status, 429, '上游限流应原样用 429，让前端能区分「等一会」')
     const { error } = await res.json()
     assert.match(error, /服务商|限流/)
-    // 文案要给出可执行的等待时间，否则用户只会反复点重试把额度耗在自己身上
-    assert.match(error, /15\s*秒/, '限流提示应告知大致恢复时间')
+    // 刻意不承诺恢复时间：实测 Worker 出口 IP 被限流时等多久都不会好转，
+    // 承诺「15 秒」等于骗用户反复点重试
+    assert.doesNotMatch(error, /\d+\s*秒/, '限流提示不应承诺具体恢复时间')
   } finally {
     restore()
   }
