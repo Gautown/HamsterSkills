@@ -33,6 +33,11 @@ const t = T[lang]
 const strings = {
   title: t.chatTitle,
   placeholder: t.chatPlaceholder,
+  /**
+   * textarea 的无障碍名。placeholder 不能替代它 ——
+   * 输入内容后 placeholder 就消失，读屏拿不到字段名。
+   */
+  inputLabel: t.chatInputLabel,
   send: t.chatSend,
   thinking: t.chatThinking,
   greeting: t.chatGreeting,
@@ -81,6 +86,7 @@ const strings = {
         rows="1"
         placeholder={strings.placeholder}
         maxlength="2000"
+        aria-label={strings.inputLabel}
       ></textarea>
       <button class="chat-send" type="submit" id="chat-send" aria-label={strings.send}>
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10l14-7-5 7 5 7z" /></svg>
@@ -510,8 +516,14 @@ const strings = {
   }
 
   .chat-input:focus {
-    outline: none;
+    /*
+     * border-color 变化是弱提示，单独用不满足 WCAG 2.4.7。
+     * outline 保留（:focus 而非 :focus-visible：聊天是重度键盘交互，
+     * 鼠标点进来也保留焦点环反而更连贯）。
+     */
     border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
 
   .chat-send {

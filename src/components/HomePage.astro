@@ -81,11 +81,11 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
         排序控件紧贴它实际作用的技能网格标题行，靠 section 右边缘对齐。
         （此前被放在 hero 里，位置离技能网格太远。）
       */}
-      <div class="sort-row">
+      <div class="sort-row" role="group" aria-label={t.sortLabel}>
         <span class="sort-label">{t.sortLabel}</span>
-        <button class="sort-btn active" type="button" data-sort="default">{t.sortDefault}</button>
-        <button class="sort-btn" type="button" data-sort="score">{t.sortScore}</button>
-        <button class="sort-btn" type="button" data-sort="likes">{t.sortLikes}</button>
+        <button class="sort-btn active" type="button" data-sort="default" aria-pressed="true">{t.sortDefault}</button>
+        <button class="sort-btn" type="button" data-sort="score" aria-pressed="false">{t.sortScore}</button>
+        <button class="sort-btn" type="button" data-sort="likes" aria-pressed="false">{t.sortLikes}</button>
       </div>
     </div>
 
@@ -333,7 +333,12 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
   const sortBtns = Array.from(document.querySelectorAll<HTMLElement>('.sort-btn'))
   for (const btn of sortBtns) {
     btn.addEventListener('click', () => {
-      sortBtns.forEach(b => b.classList.toggle('active', b === btn))
+      sortBtns.forEach(b => {
+        const on = b === btn
+        b.classList.toggle('active', on)
+        // 视觉与语义必须同步，只换 class 的话读屏仍认为旧的生效
+        b.setAttribute('aria-pressed', on ? 'true' : 'false')
+      })
       activeSort = btn.dataset.sort ?? 'default'
       ensureFull()
       applySort()

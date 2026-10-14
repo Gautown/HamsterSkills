@@ -107,13 +107,66 @@ const skillMdText = [
           但两个 tab 属于正常的分栏 UI，不是噪音。
           evaluation / guide 仅本地精选 skill 有（实测远端 8797 条命中数为 0）。
         */}
-        <div class="tab-bar" role="tablist">
-          <button class="tab active" type="button" data-tab="skillmd">SKILL.md</button>
-          {evaluationHtml && <button class="tab" type="button" data-tab="evaluation">{t.tabEvaluation}</button>}
-          {guideHtml && <button class="tab" type="button" data-tab="guide">{t.tabGuide}</button>}
-          <button class="tab" type="button" data-tab="discussion">{t.tabDiscussion}</button>
+        <div class="tab-bar" role="tablist" aria-label={t.tabListLabel}>
+          {/*
+            WAI-ARIA 标签页模式要求成套属性：
+            按钮要 role="tab" + aria-selected + aria-controls 指向面板 id，
+            面板要有 id + aria-labelledby 指回按钮。
+            此前只有 tablist 与 tabpanel，按钮被读屏当普通按钮播报，
+            选中哪个面板也无从得知。方向键切换同样缺失。
+          */}
+          <button
+            class="tab active"
+            type="button"
+            role="tab"
+            id="tab-btn-skillmd"
+            aria-controls="tab-panel-skillmd"
+            aria-selected="true"
+            data-tab="skillmd"
+          >SKILL.md</button>
+          {evaluationHtml && (
+            <button
+              class="tab"
+              type="button"
+              role="tab"
+              id="tab-btn-evaluation"
+              aria-controls="tab-panel-evaluation"
+              aria-selected="false"
+              tabindex="-1"
+              data-tab="evaluation"
+            >{t.tabEvaluation}</button>
+          )}
+          {guideHtml && (
+            <button
+              class="tab"
+              type="button"
+              role="tab"
+              id="tab-btn-guide"
+              aria-controls="tab-panel-guide"
+              aria-selected="false"
+              tabindex="-1"
+              data-tab="guide"
+            >{t.tabGuide}</button>
+          )}
+          <button
+            class="tab"
+            type="button"
+            role="tab"
+            id="tab-btn-discussion"
+            aria-controls="tab-panel-discussion"
+            aria-selected="false"
+            tabindex="-1"
+            data-tab="discussion"
+          >{t.tabDiscussion}</button>
         </div>
-        <div class="tab-panel" data-tab="skillmd" role="tabpanel">
+        <div
+          class="tab-panel"
+          data-tab="skillmd"
+          role="tabpanel"
+          id="tab-panel-skillmd"
+          aria-labelledby="tab-btn-skillmd"
+          tabindex="0"
+        >
           {bodyIsPlaceholder ? (
             <p class="tab-empty">{t.bodyPlaceholder}</p>
           ) : bodyView.html ? (
@@ -135,16 +188,40 @@ const skillMdText = [
           )}
         </div>
         {evaluationHtml && (
-          <div class="tab-panel" data-tab="evaluation" role="tabpanel" hidden>
+          <div
+            class="tab-panel"
+            data-tab="evaluation"
+            role="tabpanel"
+            id="tab-panel-evaluation"
+            aria-labelledby="tab-btn-evaluation"
+            tabindex="0"
+            hidden
+          >
             <div class="tab-content" set:html={evaluationHtml} />
           </div>
         )}
         {guideHtml && (
-          <div class="tab-panel" data-tab="guide" role="tabpanel" hidden>
+          <div
+            class="tab-panel"
+            data-tab="guide"
+            role="tabpanel"
+            id="tab-panel-guide"
+            aria-labelledby="tab-btn-guide"
+            tabindex="0"
+            hidden
+          >
             <div class="tab-content" set:html={guideHtml} />
           </div>
         )}
-        <div class="tab-panel" data-tab="discussion" role="tabpanel" hidden>
+        <div
+          class="tab-panel"
+          data-tab="discussion"
+          role="tabpanel"
+          id="tab-panel-discussion"
+          aria-labelledby="tab-btn-discussion"
+          tabindex="0"
+          hidden
+        >
           <div class="tab-content discussion-panel">
             <GiscusComments term={entry.id} locale={locale} />
           </div>
@@ -342,14 +419,22 @@ const skillMdText = [
 ></script>
 
 <script>
-  const tabBtns = document.querySelectorAll<HTMLElement>('.tab')
+  const tabBtns = Array.from(document.querySelectorAll<HTMLElement>('.tab[role="tab"]'))
   const panels = document.querySelectorAll<HTMLElement>('.tab-panel')
   /** 切到「讨论」tab 时才注入 Giscus 脚本：站内 17860 个详情页不能每页都预加载 */
-  function activateTab(btn: HTMLElement) {
-    tabBtns.forEach(b => b.classList.toggle('active', b === btn))
+  function activateTab(btn: HTMLElement, focus = false) {
+    tabBtns.forEach(b => {
+      const on = b === btn
+      b.classList.toggle('active', on)
+      // aria-selected 与 tabindex 必须同步更新：
+      // 读屏靠它播报当前面板，Tab 键靠它决定停在哪一个标签上
+      b.setAttribute('aria-selected', on ? 'true' : 'false')
+      b.tabIndex = on ? 0 : -1
+    })
     panels.forEach(p => {
       p.hidden = p.dataset.tab !== btn.dataset.tab
     })
+    if (focus) btn.focus()
     if (btn.dataset.tab === 'discussion') {
       const host = document.querySelector<HTMLElement>('.giscus-host')
       const mount = (window as unknown as { mountGiscus?: (el: HTMLElement) => void }).mountGiscus
@@ -357,6 +442,29 @@ const skillMdText = [
     }
   }
   tabBtns.forEach(btn => btn.addEventListener('click', () => activateTab(btn)))
+
+  /*
+   * 方向键在标签间移动（WAI-ARIA 标签页模式的标准行为）。
+   *
+   * 只有 tabBtns.length > 1 才需要绑：单标签时方向键应当正常滚动页面，
+   * 拦下来反而妨碍用户。
+   */
+  if (tabBtns.length > 1) {
+    const tabBar = document.querySelector<HTMLElement>('.tab-bar')
+    tabBar?.addEventListener('keydown', (e: KeyboardEvent) => {
+      const cur = tabBtns.indexOf(document.activeElement as HTMLElement)
+      if (cur < 0) return
+      // Home / End 跳首尾，←→ 循环移动（两端不回绕到空白）
+      const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+      let next = cur
+      if (delta !== 0) next = (cur + delta + tabBtns.length) % tabBtns.length
+      else if (e.key === 'Home') next = 0
+      else if (e.key === 'End') next = tabBtns.length - 1
+      else return
+      e.preventDefault()
+      activateTab(tabBtns[next], true)
+    })
+  }
 
   // 支持 #discussion 深链：从站外直接打开讨论 tab
   if (location.hash === '#discussion') {

@@ -27,11 +27,16 @@ const list = skills.filter(s => s.data.category === category)
     </div>
   </div>
   {list.length > 0 && (
-    <div class="sort-row" style="margin: 4px 0 16px">
+    <div class="sort-row" style="margin: 4px 0 16px" role="group" aria-label={t.sortLabel}>
       <span class="sort-label">{t.sortLabel}</span>
-      <button class="sort-btn active" type="button" data-sort="default">{t.sortDefault}</button>
-      <button class="sort-btn" type="button" data-sort="score">{t.sortScore}</button>
-      <button class="sort-btn" type="button" data-sort="likes">{t.sortLikes}</button>
+      {/*
+        互斥的排序选项，用 aria-pressed 表达「当前生效的是哪个」。
+        只有视觉上的 .active 类时，读屏用户按 Tab 走过三个按钮
+        完全无法知道当前选的是哪一项。
+      */}
+      <button class="sort-btn active" type="button" data-sort="default" aria-pressed="true">{t.sortDefault}</button>
+      <button class="sort-btn" type="button" data-sort="score" aria-pressed="false">{t.sortScore}</button>
+      <button class="sort-btn" type="button" data-sort="likes" aria-pressed="false">{t.sortLikes}</button>
     </div>
   )}
   {list.length > 0 ? (
@@ -50,7 +55,12 @@ const list = skills.filter(s => s.data.category === category)
   const originalOrder = [...cards]
   for (const btn of sortBtns) {
     btn.addEventListener('click', () => {
-      sortBtns.forEach(b => b.classList.toggle('active', b === btn))
+      sortBtns.forEach(b => {
+        const on = b === btn
+        b.classList.toggle('active', on)
+        // 视觉与语义必须同步，只换 class 的话读屏仍认为旧的生效
+        b.setAttribute('aria-pressed', on ? 'true' : 'false')
+      })
       const mode = btn.dataset.sort
       let ordered = [...cards]
       if (mode === 'score') ordered.sort((a, b) => Number(b.dataset.score || 0) - Number(a.dataset.score || 0))
