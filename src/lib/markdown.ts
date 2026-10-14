@@ -14,8 +14,17 @@ import { marked, Renderer } from 'marked'
 /** 需要连同内容一起丢弃的标签：内部是代码或样式，当文本显示只会产生无意义长行 */
 const DROP_TAGS = ['script', 'style', 'iframe', 'object', 'embed', 'noscript', 'svg', 'canvas', 'template']
 
-/** 块级标签，去标签时补空格，避免相邻文字粘连 */
-const BLOCK_TAGS = ['div', 'p', 'br', 'tr', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'section', 'article', 'table']
+/**
+ * 块级标签，去标签时补空格，避免相邻文字粘连。
+ *
+ * td / th 必须在内：实测 `<td>安装</td><td>npm i</td>` 会渲染成
+ * 「安装npm i」——两个单元格粘成一个词。本站有 4,313 条正文含表格，
+ * 这是高频命中路径。
+ */
+const BLOCK_TAGS = [
+  'div', 'p', 'br', 'tr', 'td', 'th', 'li', 'tbody', 'thead', 'tfoot',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'section', 'article', 'table',
+]
 
 const escapeHtml = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
