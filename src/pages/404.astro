@@ -1,12 +1,21 @@
 ---
+/**
+ * 中文站 404。
+ *
+ * 文案走语言包。此前是硬编码的中英拼接（「页面不存在 / Page not found.」
+ * 「回到首页 Back home」），对中英两种读者都不自然，且完全绕过 i18n 体系。
+ */
 import Layout from '../layouts/Layout.astro'
+import { T } from '../i18n/translations'
+
+const t = T.zh
 ---
 
 <Layout lang="zh" title="404">
   <div class="container notfound">
     <p class="nf-code">404</p>
-    <h1>页面不存在</h1>
-    <p class="sub">这个技能还没被收录，或者链接有误。/ Page not found.</p>
-    <a class="btn btn-filled" href="/">回到首页 Back home</a>
+    <h1>{t.notFoundTitle}</h1>
+    <p class="sub">{t.notFoundDesc}</p>
+    <a class="btn btn-filled" href="/">{t.notFoundHome}</a>
   </div>
 </Layout>

@@ -75,7 +75,7 @@ const ogImage = new URL('/og.svg', SITE_ORIGIN).href
     <main>
       <slot />
     </main>
-    <Footer />
+    <Footer lang={lang} />
     {/* 全站聊天窗：固定在视口右边缘、垂直居中 */}
     <ChatWidget lang={lang} skill={skill} />
   </body>

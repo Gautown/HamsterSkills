@@ -1,0 +1,15 @@
+---
+import Layout from '../../layouts/Layout.astro'
+import { T } from '../../i18n/translations'
+
+const t = T.en
+---
+
+<Layout lang="en" title="404">
+  <div class="container notfound">
+    <p class="nf-code">404</p>
+    <h1>{t.notFoundTitle}</h1>
+    <p class="sub">{t.notFoundDesc}</p>
+    <a class="btn btn-filled" href="/en/">{t.notFoundHome}</a>
+  </div>
+</Layout>

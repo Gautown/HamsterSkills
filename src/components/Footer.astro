@@ -1,6 +1,25 @@
+---
+/**
+ * 全站页脚。
+ *
+ * 此前文案是硬编码中文且 Layout 没传 lang，
+ * 导致**英文站每一页页脚都显示中文**。
+ * 现在接语言包，复用 siteName / siteDesc，不新增翻译键。
+ */
+import { T } from '../i18n/translations'
+import type { Locale } from '../i18n/translations'
+
+interface Props {
+  lang: Locale
+}
+
+const { lang } = Astro.props
+const t = T[lang]
+---
+
 <footer class="site-footer">
   <div class="container">
-    <span>Hamster Skills · 按用途分类的 AI Skill 仓库</span>
+    <span>{t.siteName} · {t.siteDesc}</span>
     <span>Built with Astro</span>
   </div>
 </footer>
