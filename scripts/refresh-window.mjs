@@ -71,16 +71,19 @@ for (let i = 1; i <= iters; i++) {
   } catch { }
 
   try {
-    const home = fs.readFileSync(root + '/dist/index.html', 'utf8')
-    const m = home.match(/全部[\s\S]{0,80}?(\d+)/)
-    const homeMB = (fs.statSync(root + '/dist/index.html').size / 1e6).toFixed(2)
-    console.log(`[${i}] home total zh:`, m ? m[1] : '?', `| index.html = ${homeMB} MB`)
+    // 技能总数从索引读，不用正则抠 HTML —— 旧正则会先撞上导航里的
+    // 「全部技能」，再匹配到 data-astro-cid-* 的哈希数字，实测把 8,809 报成 6。
     const idxPath = root + '/dist/skills-index.json'
+    let homeTotal = '?'
     if (fs.existsSync(idxPath)) {
-      console.log(`[${i}] skills-index.json = ${(fs.statSync(idxPath).size / 1e6).toFixed(2)} MB`)
+      const idx = JSON.parse(fs.readFileSync(idxPath, 'utf8'))
+      homeTotal = String(idx.count ?? idx.items?.length ?? '?')
+      console.log(`[${i}] skills-index.json: count=${homeTotal} = ${(fs.statSync(idxPath).size / 1e6).toFixed(2)} MB`)
     } else {
       console.log(`[${i}] skills-index.json MISSING`)
     }
+    const homeMB = (fs.statSync(root + '/dist/index.html').size / 1e6).toFixed(2)
+    console.log(`[${i}] home total zh: ${homeTotal} | index.html = ${homeMB} MB`)
     const tags = fs.readdirSync(root + '/dist/tags')
     console.log(`[${i}] tag pages:`, tags.length, '| illegal dirs:', tags.filter(t => /[:*?"<>|#%]/.test(t)).length)
   } catch (e) {

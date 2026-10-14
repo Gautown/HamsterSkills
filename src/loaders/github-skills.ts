@@ -139,6 +139,15 @@ interface SkillManifestFile {
   version: number
   builtAt: string
   count: number
+  /**
+   * 本次构建是否发生了 GitHub 限流降级。
+   *
+   * 降级时站点会变小（拿不到文件树的仓库退回旧缓存），
+   * 但构建仍然判成功 —— 只靠日志里那行 warn，CI 与 audit 都读不到，
+   * 「部署成功」会掩盖「内容少了几千条」。写进清单后，
+   * `npm run audit` 就能程序化地把它报出来。
+   */
+  rateLimited: boolean
   skills: SkillManifestEntry[]
 }
 
@@ -316,7 +325,7 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
        * 因此 id 去重、仓库顺序、单仓/总量截断都已在上面生效，
        * 脚本无需（也不应）复刻任何一条规则。
        */
-      writeSkillManifest(state.manifest, resolved.cacheDir, context.config.root, context.logger)
+      writeSkillManifest(state.manifest, state.rateLimited, resolved.cacheDir, context.config.root, context.logger)
     },
   }
 }
@@ -895,6 +904,7 @@ function readDiscoveryCache(file: string): DiscoveryCacheFile | null {
  */
 function writeSkillManifest(
   skills: SkillManifestEntry[],
+  rateLimited: boolean,
   cacheDir: string | URL | undefined,
   root: URL,
   logger: LoaderContext['logger'],
@@ -904,6 +914,7 @@ function writeSkillManifest(
     version: 1,
     builtAt: new Date().toISOString(),
     count: skills.length,
+    rateLimited,
     skills,
   }
   try {

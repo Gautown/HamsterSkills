@@ -45,8 +45,16 @@ const ogImage = new URL('/og.svg', SITE_ORIGIN).href
   <head>
     <meta charset="UTF-8" />
     <script is:inline>
-      const __t = localStorage.getItem('hamster:theme')
-      if (__t) document.documentElement.dataset.theme = __t
+      /*
+       * localStorage 读取必须 try/catch：Safari 无痕模式、站点数据被禁用、
+       * 或以 file:// 打开时，访问它会抛 SecurityError。
+       * 不兜住的话这行抛错会中断整段内联脚本。
+       * 读不到就走 CSS 的系统主题兜底，功能不受影响。
+       */
+      try {
+        const __t = localStorage.getItem('hamster:theme')
+        if (__t) document.documentElement.dataset.theme = __t
+      } catch {}
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={pageDesc} />

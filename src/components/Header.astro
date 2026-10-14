@@ -278,7 +278,16 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
     btn.addEventListener('click', () => {
       const next = isDark() ? 'light' : 'dark'
       document.documentElement.dataset.theme = next
-      localStorage.setItem('hamster:theme', next)
+      /*
+       * 写入同样要兜住：无痕模式 / 禁用站点数据时 localStorage.setItem
+       * 会抛 SecurityError。这里若不 catch，异常会中断整个处理器，
+       * 结果是**主题变了但没存下来**，paintThemes() 不执行，
+       * 用户刷新一下就被打回原样 —— 比不保存更难解释。
+       * 存不下就算了，本次会话内的切换仍然有效。
+       */
+      try {
+        localStorage.setItem('hamster:theme', next)
+      } catch {}
       paintThemes()
     })
   }

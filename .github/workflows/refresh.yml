@@ -69,6 +69,15 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      # ---- 质量门禁：先验证代码本身，再花一小时去爬 GitHub ----
+      # 此前这两个步骤都不在流水线里，161 个用例与类型检查只在本地跑过；
+      # 一旦回归，站点会带着坏代码照常部署。
+      - name: 单元测试
+        run: npm test
+
+      - name: 类型检查
+        run: npm run check
+
       - name: 恢复语料缓存与 AI 记忆库
         uses: actions/cache@v4
         with:
@@ -89,7 +98,9 @@ jobs:
       # 记忆库命中的条目零成本，只有新增或正文变更的才调用 API。
       # 未配置 AI_API_KEY 或调用失败时脚本自行跳过，规则层分类照常生效。
       - name: AI 分类
-        run: npm run ai-classify | tee ai-output.txt
+        # pipefail：管道的退出码默认取自最后一个命令（tee），
+        # 那样 ai-classify 崩了也会被当成成功。日志照样留存，但失败必须传出去。
+        run: set -o pipefail; npm run ai-classify | tee ai-output.txt
 
       # ---- 第二次构建：带上刚写入的 AI 分类，让它当次生效 ----
       - name: 构建（应用 AI 分类）
@@ -98,8 +109,10 @@ jobs:
       - name: 切分双站资产
         run: npm run split
 
+      # 审计现在会在覆盖率缺口或限流降级时以非 0 退出（见 scripts/audit.mjs 末尾），
+      # 同样需要 pipefail 才能拦住部署。
       - name: 聚合审计
-        run: npm run audit | tee refresh-audit.txt
+        run: set -o pipefail; npm run audit | tee refresh-audit.txt
 
       - name: 部署中文站 Worker
         run: npm run deploy:zh
