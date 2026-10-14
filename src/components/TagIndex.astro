@@ -25,7 +25,7 @@ const tags = [...tagCounts.entries()]
   .sort((a, b) => b.count - a.count)
 ---
 
-<div class="container">
+<div class="container" data-i18n={JSON.stringify({ hitCount: t.tagHitCount })}>
   <p class="eyebrow">{t.catsEyebrow}</p>
   <div class="cat-head">
     <div>
@@ -33,13 +33,35 @@ const tags = [...tagCounts.entries()]
       <p class="sub">{t.tagsSub}</p>
     </div>
     <div class="cat-count-block">
-      <span class="count-big">{tags.length}</span>
-      <span class="count-label">{t.tagsTitle}</span>
+      <span class="count-big" id="tag-total">{tags.length}</span>
+      {/*
+        数量单位用 skillsInCategory（「个技能」），不是 tagsTitle（「技能标签」）。
+        原先误用后者，页面上出现「1231 技能标签」这种病句。
+      */}
+      <span class="count-label">{t.skillsInCategory}</span>
     </div>
   </div>
-  <ul class="grid">
+
+  {/*
+    标签总页有 1200+ 项，没有搜索就只能靠滚动翻找 —— 用户在这里
+    实际上什么都找不到。页头那个搜索框在本页也完全无效
+    （筛选逻辑只写在 HomePage 的脚本里）。
+  */}
+  <div class="tag-filter">
+    <label class="tag-filter-label" for="tag-search">{t.tagSearchLabel}</label>
+    <input
+      class="tag-filter-input"
+      id="tag-search"
+      type="search"
+      autocomplete="off"
+      placeholder={t.tagSearchPlaceholder}
+    />
+    <p class="tag-filter-status" id="tag-status" role="status" aria-live="polite"></p>
+  </div>
+
+  <ul class="grid" id="tag-grid">
     {tags.map(({ slug, tag, count }) => (
-      <li class="cat-card">
+      <li class="cat-card" data-tag={tag.toLowerCase()}>
         <a href={`${base}/tags/${slug}`}>
           <span class="cat-name">{tag}</span>
           <span class="cat-count"><strong>{count}</strong> {t.skillsInCategory}</span>
@@ -48,4 +70,117 @@ const tags = [...tagCounts.entries()]
       </li>
     ))}
   </ul>
+
+  <p class="tag-empty hidden" id="tag-empty">{t.tagSearchEmpty}</p>
 </div>
+
+<script>
+  /*
+   * 标签筛选。
+   *
+   * 只做「按标签名过滤」这一件事：1231 张卡片全部已在 DOM 里，
+   * 切 hidden class 的开销可以忽略（实测十几毫秒），不需要虚拟滚动或分页。
+   *
+   * 数据源用每张卡片上的 data-tag（构建时写入的小写标签名），
+   * 而不是运行时遍历文本节点 —— 后者要处理富文本节点，容易出错。
+   */
+  function bootTagFilter(root: HTMLElement) {
+    const grid = root.querySelector<HTMLElement>('#tag-grid')
+    const input = root.querySelector<HTMLInputElement>('#tag-search')
+    const status = root.querySelector<HTMLElement>('#tag-status')
+    const empty = root.querySelector<HTMLElement>('#tag-empty')
+    const total = root.querySelector<HTMLElement>('#tag-total')
+    if (!grid || !input || !status || !empty) return
+
+    const cards = Array.from(grid.querySelectorAll<HTMLElement>('.cat-card'))
+    const totalCount = cards.length
+
+    function apply() {
+      const q = input.value.trim().toLowerCase()
+      let visible = 0
+      for (const card of cards) {
+        const hit = !q || (card.dataset.tag ?? '').includes(q)
+        card.classList.toggle('hidden', !hit)
+        if (hit) visible++
+      }
+      empty.classList.toggle('hidden', visible > 0)
+      /*
+       * 顶部总数跟着筛选结果走，否则用户搜到 3 个标签时
+       * 右上角还写着 1231，会以为筛选坏了。
+       */
+      if (total) total.textContent = q ? String(visible) : String(totalCount)
+      status.textContent = q
+        ? strings.hitCount.replace('{n}', String(visible)).replace('{total}', String(totalCount))
+        : ''
+    }
+
+    input.addEventListener('input', apply)
+    input.addEventListener('search', apply)
+    // Esc 清空：搜索框的通用预期
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && input.value) {
+        event.preventDefault()
+        input.value = ''
+        apply()
+      }
+    })
+  }
+
+  const labels = JSON.parse(document.querySelector<HTMLElement>('.cat-head')?.parentElement?.dataset.i18n ?? '{}') as {
+    hitCount?: string
+  }
+  const strings = {
+    hitCount: labels.hitCount ?? '筛选出 {n} / {total} 个标签',
+  }
+
+  document.querySelectorAll<HTMLElement>('.container').forEach(bootTagFilter)
+</script>
+
+<style>
+  .tag-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 0 20px;
+  }
+
+  .tag-filter-label {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .tag-filter-input {
+    width: 100%;
+    max-width: 420px;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 14px;
+  }
+
+  /* 焦点环必须可见：搜索框是本页唯一的导航手段 */
+  .tag-filter-input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent);
+  }
+
+  .tag-filter-status {
+    margin: 0;
+    min-height: 1.2em;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .tag-empty {
+    margin: 24px 0;
+    padding: 28px 0;
+    text-align: center;
+    color: var(--muted);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+  }
+</style>

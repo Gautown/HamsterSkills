@@ -985,6 +985,23 @@ h2 {
   }
 }
 
+/*
+ * 通用 .grid 的窄屏兜底。
+ *
+ * minmax(300px, 1fr) 的 300px 是**硬下限**：容器可用宽不足 300px 时，
+ * 网格仍按 300px 排布，整页出现横向滚动。
+ * 实测 320px 视口（iPhone SE）：容器 273px、卡片 300px、溢出 11px。
+ * 375px 及以上不触发，所以此前没被发现。
+ *
+ * 用 minmax(0, 1fr) 而不是 100%：后者在 grid 里等价于 minmax(auto, 1fr)，
+ * auto 最小尺寸仍会被内容撑开，压不住。
+ */
+@media (max-width: 420px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .card {
   border: 1px solid var(--line);
   border-radius: var(--radius);
