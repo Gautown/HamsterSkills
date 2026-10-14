@@ -4,16 +4,24 @@ interface Props {
   label: string
   copyLabel: string
   copied: string
+  failed: string
   note: string
 }
 
-const { prompt, label, copyLabel, copied, note } = Astro.props
+const { prompt, label, copyLabel, copied, failed, note } = Astro.props
 ---
 
 <section class="prompt-box">
   <div class="prompt-head">
     <span>{label}</span>
-    <button class="copy-btn" type="button" data-label={copyLabel} data-copied={copied}>{copyLabel}</button>
+    <button
+      class="copy-btn"
+      type="button"
+      data-label={copyLabel}
+      data-copied={copied}
+      data-failed={failed}
+      aria-live="polite"
+    >{copyLabel}</button>
   </div>
   <pre><code>{prompt}</code></pre>
   <p class="note">{note}</p>
@@ -24,21 +32,37 @@ const { prompt, label, copyLabel, copied, note } = Astro.props
   for (const btn of document.querySelectorAll<HTMLElement>('.copy-btn')) {
     btn.addEventListener('click', async () => {
       const text = pre?.innerText || ''
+      /*
+       * 与 SkillDetail 的 copyText 同理：必须返回真实结果。
+       * 原先无论成败都显示「已复制」，失败时用户会以为拿到了内容，
+       * 去别处粘贴才发现是空的。
+       * execCommand 的返回值同样要检查 —— 它失败时返回 false。
+       */
+      let ok = false
       try {
         await navigator.clipboard.writeText(text)
+        ok = true
       } catch {
         const ta = document.createElement('textarea')
         ta.value = text
+        ta.setAttribute('readonly', '')
+        ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0'
         document.body.appendChild(ta)
         ta.select()
-        document.execCommand('copy')
+        try {
+          ok = document.execCommand('copy')
+        } catch {
+          ok = false
+        }
         ta.remove()
       }
-      const labelEl = btn.querySelector('.btn-main') || btn
-      labelEl.textContent = btn.dataset.copied ?? 'Copied'
+
+      btn.textContent = ok ? btn.dataset.copied ?? 'Copied' : btn.dataset.failed ?? 'Failed'
+      btn.classList.toggle('is-failed', !ok)
       setTimeout(() => {
-        labelEl.textContent = btn.dataset.label ?? ''
-      }, 1600)
+        btn.textContent = btn.dataset.label ?? ''
+        btn.classList.remove('is-failed')
+      }, ok ? 1600 : 3200)
     })
   }
 </script>

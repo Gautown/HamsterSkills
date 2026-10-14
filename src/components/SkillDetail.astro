@@ -173,7 +173,7 @@ const skillMdText = [
       )}
 
       {d.prompt && (
-        <CopyPrompt prompt={d.prompt} label={t.copyPrompt} copyLabel={t.copy} copied={t.copied} note={t.promptNote} />
+        <CopyPrompt prompt={d.prompt} label={t.copyPrompt} copyLabel={t.copy} copied={t.copied} failed={t.copyFailed} note={t.promptNote} />
       )}
 
       {d.example && (
@@ -262,17 +262,32 @@ const skillMdText = [
               <button class="export-btn side-btn2" type="button">
                 <span class="btn-eyebrow">.MD</span>
                 <span class="btn-main">{t.exportBtn}</span>
+                <span class="export-status export-status-inline" data-done={t.exported} aria-live="polite"></span>
               </button>
             </>
           ) : (
             <button class="export-btn side-btn2 full" type="button">
               <span class="btn-eyebrow">.MD</span>
               <span class="btn-main">{t.exportBtn}</span>
+              <span class="export-status" data-done={t.exported} aria-live="polite"></span>
             </button>
           )}
         </div>
-        <button class="install-btn" type="button" data-label={t.installBtn} data-copied={t.copied}>
-          &gt;_ {t.installBtn}
+        {/*
+          图标与文案分成两个子元素：原先整块用 textContent 替换状态，
+          `&gt;_` 前缀会在首次点击后永久丢失，按钮外观与相邻按钮不一致。
+          现在只改 .install-btn-text 的文字。
+        */}
+        <button
+          class="install-btn"
+          type="button"
+          data-label={t.installBtn}
+          data-copied={t.copied}
+          data-failed={t.copyFailed}
+          aria-live="polite"
+        >
+          <span class="install-btn-icon" aria-hidden="true">&gt;_</span>
+          <span class="install-btn-text">{t.installBtn}</span>
         </button>
         {d.github && (
           <a class="github-cta" href={d.github} target="_blank" rel="noopener">▶ {t.githubLabel} ↗</a>
@@ -357,35 +372,94 @@ const skillMdText = [
     mdText = ''
   }
 
-  async function copyText(text: string) {
+  /**
+   * 复制文本，返回**是否成功**。
+   *
+   * 原先没有返回值，调用方无法区分成功与失败，于是失败时照样显示
+   * 「已复制」—— 谎报成功比直接不显示更糟：用户会以为已经拿到，
+   * 然后去别处粘贴、发现是空的。
+   */
+  async function copyText(text: string): Promise<boolean> {
     try {
       await navigator.clipboard.writeText(text)
+      return true
     } catch {
+      /*
+       * 降级路径用已废弃的 execCommand。
+       * 它同样返回布尔值：失败时是 false，必须检查 ——
+       * 不检查就等于把「复制失败」吞掉。
+       */
       const ta = document.createElement('textarea')
       ta.value = text
+      ta.setAttribute('readonly', '')
+      ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0'
       document.body.appendChild(ta)
       ta.select()
-      document.execCommand('copy')
+      let ok = false
+      try {
+        ok = document.execCommand('copy')
+      } catch {
+        ok = false
+      }
       ta.remove()
+      return ok
     }
+  }
+
+  /** 按钮文字闪一下再复原；只改文字节点，不动图标 */
+  function flashText(el: HTMLElement, text: string, ms = 1600) {
+    const label = el.querySelector<HTMLElement>('.install-btn-text')
+    const target = label ?? el
+    const original = target.textContent ?? ''
+    target.textContent = text
+    el.classList.toggle('is-failed', el.dataset.failed === text)
+    setTimeout(() => {
+      target.textContent = original
+      el.classList.remove('is-failed')
+    }, ms)
   }
 
   const installBtn = document.querySelector<HTMLElement>('.install-btn')
   installBtn?.addEventListener('click', async () => {
-    await copyText(mdText)
-    installBtn.textContent = installBtn.dataset.copied || 'Copied'
-    setTimeout(() => {
-      installBtn.textContent = installBtn.dataset.label || ''
-    }, 1600)
+    const ok = await copyText(mdText)
+    if (installBtn.dataset.flash) clearTimeout(Number(installBtn.dataset.flash))
+    const timer = setTimeout(() => {
+      if (installBtn.dataset.flash) delete installBtn.dataset.flash
+    }, 1700)
+    installBtn.dataset.flash = String(timer)
+    flashText(
+      installBtn,
+      ok ? installBtn.dataset.copied || 'Copied' : installBtn.dataset.failed || 'Failed',
+      ok ? 1600 : 3200,
+    )
   })
 
-  document.querySelector('.export-btn')?.addEventListener('click', () => {
+  const exportBtn = document.querySelector<HTMLElement>('.export-btn')
+  exportBtn?.addEventListener('click', () => {
+    /*
+     * 从当前按钮自身取状态节点，不依赖全局 id：
+     * 导出按钮在模板里有**两个分支**（是否带 copy 按钮决定布局），
+     * 只有一个分支带 id。走到另一支时 getElementById 返回 null，
+     * 状态提示会静默消失。
+     */
+    const status = exportBtn.querySelector<HTMLElement>('.export-status')
     const blob = new Blob([mdText], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
+    a.href = url
     a.download = 'SKILL.md'
     a.click()
-    URL.revokeObjectURL(a.href)
+    /*
+     * 浏览器消费 blob URL 是**异步**的，同步 revoke 会在下载开始前
+     * 就把它释放掉（Firefox / Safari 上表现为下载被取消）。
+     * 延后 10 秒是安全余量：此时下载早已开始或完成。
+     */
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    // 成功也给一句反馈：浏览器可能拦截下载，用户需要知道「点了」
+    if (status) {
+      status.textContent = status.dataset.done ?? ''
+      setTimeout(() => { status.textContent = '' }, 2000)
+    }
   })
 
   const likeBtn = document.querySelector<HTMLElement>('.like-btn')
