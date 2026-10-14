@@ -8,9 +8,16 @@ dist-en/
 data/
 
 # 临时输出：wrangler tail 的日志、构建日志、预览服务器重定向等，别误提交
-# （原先写的是 t*.txt，只匹配 t 开头，实际产出过 pv.txt / chk.txt / _v.mjs 之类）
+# 踩过的坑：先写成 t*.txt（只匹配 t 开头，pv.txt 漏网），改成 *.log 后
+# 又把 .txt 整类漏掉了。现在两类都收。
 *.log
+*.txt
+# public/robots.txt 是有意保留的站点文件
 !public/robots.txt
+
+# 临时探测脚本：一次性验证用（_v.mjs / _diag.mjs / _md-probe.mjs 之类）
+# 用 **/ 而不是只写 scripts/，因为也会顺手在仓库根目录建
+**/_*.mjs
 
 # 环境变量（可能含 GITHUB_TOKEN）
 .env
