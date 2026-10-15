@@ -7,7 +7,7 @@ import { classifySkill } from '../lib/classify.mjs'
 import { AI_CACHE_FILE, SKILL_MANIFEST_FILE, loadAiCache, lookupAiCategory } from '../lib/ai-cache.mjs'
 import type { AiCacheFile } from '../lib/ai-cache.mjs'
 import { deriveSkillId, skillDirectory } from '../lib/skill-id.mjs'
-import { judgeMetadata, judgeProbe, estimateTokens, toJsonLine, type RepoMeta, type RepoProbe, type Verdict } from '../lib/triage'
+import { judgeMetadata, judgeProbe, estimateTokens, toJsonLine, type RepoMeta, type RepoProbe, type Verdict, type QualityGate } from '../lib/triage'
 
 /* ------------------------------ 公共类型 ------------------------------ */
 
@@ -41,6 +41,8 @@ export interface RemoteRepo {
   triage?: Verdict
   /** 该仓库的元数据快照，写入判定日志用 */
   meta?: RepoMeta
+  /** 质量门槛；阶段 2 的 README 示例检查要用 */
+  quality?: QualityGate
   /** 是否跳过入库判定（显式配置的仓库默认即跳过） */
   exemptFromTriage?: boolean
 }
@@ -58,6 +60,12 @@ export interface DiscoverOptions {
   ttlHours: number
   /** 排除的仓库（如已显式配置的） */
   exclude?: string[]
+  /**
+   * 质量门槛（阶段 1 / 阶段 2）。
+   * 缺省项即不启用 —— 这样 `npm run triage` 的行为与规范一致，
+   * 门槛只作用于站点构建。
+   */
+  quality?: QualityGate
 }
 
 export interface GitHubSkillsOptions {
@@ -329,6 +337,8 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
             // 把阶段 1 的判定带进 loadRepo，阶段 2 才有上下文可继承
             if (item.triage) cfg.triage = item.triage
             if (item.meta) cfg.meta = item.meta
+            // 质量门槛要传到阶段 2：README 示例检查在那里
+            if (options.discover?.quality) cfg.quality = options.discover.quality
             return cfg
           }),
         ]
@@ -425,7 +435,7 @@ async function discoverRepos(
     logger.info(`[github-skills] 自动发现缓存有效（${cached.fetchedAt}，${cached.repos.length} 个仓库）`)
     // 缓存命中也必须跑阶段 1：否则过滤只在缓存失效那一次生效，
     // 平时构建等于完全没接入判定
-    return withTriage(filterDiscovered(cached.repos, opts))
+    return withTriage(filterDiscovered(cached.repos, opts), opts.quality)
   }
 
   const found: DiscoveredRepo[] = []
@@ -444,6 +454,7 @@ async function discoverRepos(
           open_issues_count?: number
           topics?: string[]
           default_branch?: string
+          forks_count?: number
         }>
       }>(`${resolved.apiBase}/search/repositories?q=${query}&sort=stars&order=desc&per_page=${SEARCH_PER_PAGE}`, resolved.token)
       for (const item of data.items ?? []) {
@@ -466,6 +477,7 @@ async function discoverRepos(
             open_issues: item.open_issues_count,
             topics: item.topics ?? [],
             default_branch: item.default_branch,
+            forks: item.forks_count ?? 0,
           },
         })
       }
@@ -473,7 +485,7 @@ async function discoverRepos(
   } catch (error) {
     if (cached) {
       logger.warn(`[github-skills] 自动发现请求失败，改用缓存（${cached.fetchedAt}）— ${message(error)}`)
-      return withTriage(filterDiscovered(cached.repos, opts))
+      return withTriage(filterDiscovered(cached.repos, opts), opts.quality)
     }
     logger.warn(`[github-skills] 自动发现请求失败且无缓存，本次跳过自动发现 — ${message(error)}`)
     return []
@@ -494,7 +506,7 @@ async function discoverRepos(
   logger.info(
     `[github-skills] 自动发现 ${merged.length} 个公开仓库（主题：${opts.topics.join('、')}，≥${opts.minStars}★）`,
   )
-  return withTriage(filterDiscovered(merged, opts))
+  return withTriage(filterDiscovered(merged, opts), opts.quality)
 }
 
 /**
@@ -524,10 +536,10 @@ function mergeDiscovered(found: DiscoveredRepo[]): DiscoveredRepo[] {
  * 旧版发现缓存没有 meta 字段，此时用现有字段合成一份最小元数据：
  * 缺字段只会让判定停在「证据不足」，不会误杀（规则对缺失字段一律降级而非拒绝）。
  */
-function withTriage(repos: DiscoveredRepo[]): DiscoveredRepo[] {
+function withTriage(repos: DiscoveredRepo[], quality?: QualityGate): DiscoveredRepo[] {
   return repos.map(item => {
     if (item.meta) {
-      return { ...item, triage: item.triage ?? judgeMetadata(item.meta) }
+      return { ...item, triage: item.triage ?? judgeMetadata(item.meta, { quality }) }
     }
     /*
      * 旧版发现缓存没有 meta 字段（升级前的格式），只能合成最小元数据。
@@ -544,6 +556,11 @@ function withTriage(repos: DiscoveredRepo[]): DiscoveredRepo[] {
       last_push: item.pushedAt,
       default_branch: item.branch,
     }
+    /*
+     * 旧缓存路径不套质量门槛：它连 star 之外的元数据都没有，
+     * forks 恒为 undefined，照门槛判定会把全部仓库按 Q2 砍掉。
+     * 等下一次发现刷新（TTL 到期）拿到完整元数据后门槛自然生效。
+     */
     return { ...item, meta, triage: item.triage ?? judgeMetadata(meta, { allowMissingLicense: true }) }
   })
 }
@@ -700,7 +717,12 @@ async function loadRepo(
       logger.info(`[github-skills] ${cfg.repo}: 限流中，跳过阶段 2 探测`)
     } else {
       const probe = await buildProbe(cfg, ref, files, opts, config.root, logger)
-      const verdict = probe ? judgeProbe(probe, cfg.triage, { knownRepos: knownSkillPaths(opts.cacheDir, config.root) }) : null
+      const verdict = probe
+        ? judgeProbe(probe, cfg.triage, {
+            knownRepos: knownSkillPaths(opts.cacheDir, config.root),
+            quality: cfg.quality,
+          })
+        : null
       if (verdict) {
         cfg.triage = verdict
         recordTriage(state, cfg, verdict, verdict.decision === 'SKIP' ? [] : files.map(f => f.path))

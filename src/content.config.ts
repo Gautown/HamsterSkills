@@ -103,6 +103,16 @@ const readNumber = (value: string | undefined, fallback: number): number => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
 
+/**
+ * 读门槛值；**未设置时返回 undefined（表示不启用该项）**，
+ * 而不是回落成某个默认数字 —— 门槛关掉必须是显式行为。
+ */
+const readOptionalNumber = (value: string | undefined, fallback: number | undefined): number | undefined => {
+  if (value == null || value.trim() === '') return fallback
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
 const discoveryTopics = (
   env.SKILLS_TOPICS ?? 'agent-skills,claude-skills,claude-code-skills,opencode-skills,opencode-skill,hermes-skills'
 )
@@ -125,6 +135,23 @@ const skills = defineCollection({
         maxRepos: readNumber(env.SKILLS_MAX_REPOS, 300),
         ttlHours: readNumber(env.SKILLS_DISCOVER_TTL_HOURS, 24),
         exclude: explicitRepos.map(item => item.repo),
+        /*
+         * 质量门槛：三项都可用环境变量调，缺省即不启用。
+         *
+         * 阈值是按真实分布定的，不是拍脑袋：
+         *   357 个候选里 stars>=100 砍掉 25%、forks>=100 砍掉 46%；
+         *   而「star≥3000 但 fork<100」的只有 1 个仓，
+         *   「star≥1000 但 fork<10」的一个都没有 ——
+         *   fork 在这个生态里与 star 高度相关，拿它当「下载量」替代指标是稳的。
+         *
+         * 曾按字面取 forks>=1000，实测会砍掉 82% 的仓库（含大量优质合集），
+         * 故下调到 100。
+         */
+        quality: {
+          minStars: readOptionalNumber(env.SKILLS_MIN_QUALITY_STARS, 100),
+          minForks: readOptionalNumber(env.SKILLS_MIN_QUALITY_FORKS, 100),
+          requireUsageExample: env.SKILLS_REQUIRE_USAGE_EXAMPLE !== '0',
+        },
       },
       perRepoMaxSkills: readNumber(env.SKILLS_MAX_SKILLS_PER_REPO, 200),
       // 总量上限：12000 以容纳 Claude / OpenCode / Hermes 等多生态聚合（300 仓发现列表）

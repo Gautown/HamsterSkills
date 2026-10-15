@@ -43,6 +43,13 @@ export interface RepoMeta {
   /** 默认分支；阶段 2 拉文件树时需要 */
   default_branch?: string
   /**
+   * fork 数。
+   *
+   * 站点要的「下载次数」在 GitHub 公开 API 里不存在（clone/fetch 数不对外暴露），
+   * fork 是最接近「有人真的拿了一份去用」的信号，因此拿它当替代指标。
+   */
+  forks?: number
+  /**
    * 最新 release 时间。
    * undefined = 没查过（未知），null = 查过且没有 release。
    * R2 需要「无 release」这个事实才能成立，所以必须区分这两者。
@@ -81,6 +88,22 @@ export interface JudgeOptions {
   allowMissingLicense?: boolean
   /** 已入库仓库集合，用于 S8 重复判定 */
   knownRepos?: Set<string>
+  /**
+   * 质量门槛（阶段 1 用）。
+   * 不传则三项都不启用 —— 保持 `npm run triage` 的行为与规范一致，
+   * 由站点侧显式传入。
+   */
+  quality?: QualityGate
+}
+
+/** 阶段 1 的质量门槛，全部可选，不传即不启用 */
+export interface QualityGate {
+  /** 低于此 star 数直接排除 */
+  minStars?: number
+  /** 低于此 fork 数直接排除（forks 是 GitHub 公开 API 里最接近「下载量」的信号） */
+  minForks?: number
+  /** README 没有具体用法示例时是否硬性排除 */
+  requireUsageExample?: boolean
 }
 
 /* ------------------------------ 阈值 ------------------------------ */
@@ -314,6 +337,41 @@ function hasSubstantiveInstructions(readme: string): boolean {
   return fenced || heading || numbered || install
 }
 
+/**
+ * README 是否给出了**具体用法示例**。
+ *
+ * 比 hasSubstantiveInstructions 严：那个只要有标题就算「有内容」，
+ * 是给 R1 兜底用的；这里要的是读者看完知道「怎么用」。
+ *
+ * 认可四种形式，任一即可：
+ *   1. 代码块（bash / json / yaml / 实际调用）
+ *   2. 明确的安装或调用命令
+ *   3. 编号步骤
+ *   4. frontmatter / 参数说明块（Agent Skills 的标准展示方式）
+ *
+ * 刻意**不认**这些：只有宣传语、只有徽章、只有目录链接。
+ */
+function hasUsageExample(readme: string): boolean {
+  if (!readme) return false
+
+  // 1) 代码块 —— 排除空块与纯输出示例
+  if (/```[a-z]*\n\s*\S/.test(readme)) return true
+
+  // 2) 安装 / 调用命令
+  if (/^\s*(?:\$|>)\s*(?:npm|pip|pipx|uv|pip3|brew|cargo|go|docker|claude|npx|git)\b/im.test(readme)) return true
+  if (/```(?:bash|sh|shell|console|shell-session)\s*\n[^`\n]*\b(?:npm|pip|install|run|claude|uv)\b/i.test(readme)) {
+    return true
+  }
+
+  // 3) 编号步骤
+  if (/^\s*\d+[.)]\s+\S/m.test(readme)) return true
+
+  // 4) Agent Skills 的 frontmatter 示例
+  if (/^---\r?\n\s*(?:name|description)\s*:/m.test(readme)) return true
+
+  return false
+}
+
 /** description 是否像营销话术：只有形容词，没有「解决什么问题 / 怎么触发」 */
 function isMarketingOnly(readme: string): boolean {
   if (!readme) return true
@@ -335,6 +393,15 @@ export function judgeMetadata(meta: RepoMeta, opts: JudgeOptions = {}): Verdict 
   const topics = meta.topics ?? []
   const pending: SoftFlag[] = []
   const idle = idleMonths(meta, now)
+
+  /* --- 质量门槛（站点侧启用；triage CLI 不传即不生效） --- */
+  const gate = opts.quality
+  if (gate?.minStars != null && meta.stars < gate.minStars) {
+    return skip('Q1', `${meta.stars}★ 低于门槛 ${gate.minStars}★`, 0.95)
+  }
+  if (gate?.minForks != null && (meta.forks ?? 0) < gate.minForks) {
+    return skip('Q2', `${meta.forks ?? 0} fork 低于门槛 ${gate.minForks}`, 0.9)
+  }
 
   /* --- R2 归档：字段明确，证据充分 --- */
   if (meta.archived === true) {
@@ -454,6 +521,11 @@ export function judgeProbe(probe: RepoProbe, stage1: Verdict, opts: JudgeOptions
 
   const readme = probe.readme ?? ''
   const flags: SoftFlag[] = []
+
+  /* --- 质量门槛：README 必须给出具体用法示例 --- */
+  if (opts.quality?.requireUsageExample === true && !hasUsageExample(readme)) {
+    return skip('Q3', 'README 没有可照做的用法示例', 0.8)
+  }
 
   /* --- R9 / R10：内容里的注入与密钥 --- */
   const injection = matchAny(readme, INJECTION_PATTERNS)

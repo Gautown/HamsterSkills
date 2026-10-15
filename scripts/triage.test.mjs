@@ -304,6 +304,92 @@ test('健康仓库：阶段 1 放行', () => {
   assert.equal(v.reason_code, 'OK')
 })
 
+/* ------------------------- 质量门槛（Q1-Q3） ------------------------- */
+
+test('门槛默认不启用：不传 quality 时与规范行为一致', () => {
+  const v = judgeMetadata(healthy({ stars: 3, forks: 0 }), { now: NOW })
+  assert.equal(v.decision, 'PASS', '未配置门槛时不该拦低星仓库')
+})
+
+test('Q1：star 低于门槛直接排除', () => {
+  const v = judgeMetadata(healthy({ stars: 42 }), { now: NOW, quality: { minStars: 100 } })
+  assert.equal(v.decision, 'SKIP')
+  assert.equal(v.reason_code, 'Q1')
+})
+
+test('Q1：达到 star 门槛则放行', () => {
+  const v = judgeMetadata(healthy({ stars: 100 }), { now: NOW, quality: { minStars: 100 } })
+  assert.notEqual(v.reason_code, 'Q1')
+})
+
+test('Q2：fork 低于门槛直接排除', () => {
+  const v = judgeMetadata(healthy({ forks: 12 }), { now: NOW, quality: { minForks: 100 } })
+  assert.equal(v.decision, 'SKIP')
+  assert.equal(v.reason_code, 'Q2')
+})
+
+test('Q2：forks 字段缺失时按 0 处理（无法证明达标就当不达标）', () => {
+  const v = judgeMetadata(healthy({ forks: undefined }), { now: NOW, quality: { minForks: 100 } })
+  assert.equal(v.reason_code, 'Q2')
+})
+
+test('Q3：README 没有用法示例则排除', () => {
+  const v = judgeProbe(
+    probe({ readme: '## Features\n\nA powerful toolkit. Seamless integration. 最强的一站式方案。', readmeLength: 2000 }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW, quality: { requireUsageExample: true } },
+  )
+  assert.equal(v.decision, 'SKIP')
+  assert.equal(v.reason_code, 'Q3')
+})
+
+test('Q3：README 有代码块示例则放行', () => {
+  const v = judgeProbe(probe(), judgeMetadata(healthy(), { now: NOW }), {
+    now: NOW,
+    quality: { requireUsageExample: true },
+  })
+  assert.notEqual(v.reason_code, 'Q3')
+})
+
+test('Q3：认安装命令、编号步骤、frontmatter 三种示例形态', () => {
+  const stage1 = judgeMetadata(healthy(), { now: NOW })
+  const cases = {
+    安装命令: 'Install it:\n\n$ npm install my-skill\n',
+    编号步骤: '## Steps\n\n1. Clone the repo\n2. Run the skill\n3. Done\n',
+    frontmatter: '---\nname: my-skill\ndescription: does a thing\n---\n\n# My Skill\n',
+  }
+  for (const [label, readme] of Object.entries(cases)) {
+    const v = judgeProbe(probe({ readme, readmeLength: readme.length }), stage1, {
+      now: NOW,
+      quality: { requireUsageExample: true },
+    })
+    assert.notEqual(v.reason_code, 'Q3', `${label} 应被认作用法示例`)
+  }
+})
+
+test('Q3：只有徽章与目录链接不算示例', () => {
+  const readme = '[![npm](https://img.shields.io/npm/v/x)](https://npmjs.com/x)\n\n## Table of Contents\n\n- [Intro](#intro)\n- [FAQ](#faq)\n'
+  const v = judgeProbe(probe({ readme, readmeLength: readme.length }), judgeMetadata(healthy(), { now: NOW }), {
+    now: NOW,
+    quality: { requireUsageExample: true },
+  })
+  assert.equal(v.reason_code, 'Q3')
+})
+
+test('三项门槛可叠加生效', () => {
+  const gate = { minStars: 100, minForks: 100, requireUsageExample: true }
+  // 三项都达标 → 放行
+  const ok = judgeProbe(
+    probe(),
+    judgeMetadata(healthy({ stars: 500, forks: 300 }), { now: NOW, quality: gate }),
+    { now: NOW, quality: gate },
+  )
+  assert.notEqual(ok.decision, 'SKIP')
+  // 任意一项不达标 → 拦下
+  assert.equal(judgeMetadata(healthy({ stars: 99, forks: 300 }), { now: NOW, quality: gate }).reason_code, 'Q1')
+  assert.equal(judgeMetadata(healthy({ stars: 500, forks: 99 }), { now: NOW, quality: gate }).reason_code, 'Q2')
+})
+
 /* ------------------------------ 阶段 2 ------------------------------ */
 
 test('R1：无 SKILL.md 且 README 无实质指令', () => {
