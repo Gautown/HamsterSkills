@@ -76,12 +76,15 @@ src/lib/classify.mjs          唯一实现（纯函数，无网络依赖）
 ## 测试
 
 ```bash
-npm run test:classify
+node --test scripts/classify.test.mjs
 ```
 
 14 个用例，每条都对应一个真实数据回放中暴露过的实际缺陷（algorithmic-art 被判 dev、
 kanban-board 的 "In review" 命中 research、tags 是字符串的仓库导致崩溃等），
 防止后续调词时把问题带回来。
+
+> 早先这里写的是 `npm run test:classify`，但 package.json 里从来没有这个 script，
+> 照着文档敲会直接报 `Missing script`。已改为上面那条真实存在的命令。
 
 ## 待办：第二层 AI 分类
 
