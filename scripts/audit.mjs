@@ -11,20 +11,61 @@ import fs from 'node:fs'
 const root = process.cwd()
 const dir = root + '/.cache/skills-remote'
 const disc = JSON.parse(fs.readFileSync(dir + '/_discovery.json', 'utf8'))
-const files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && f !== '_discovery.json')
+
+/*
+ * 只把**仓库语料缓存**算进来。
+ *
+ * 目录里还有 `_manifest.json`（技能清单）与 `_discovery.json`，
+ * 两者都不是某个仓库的语料。原先只排除了后者，
+ * 于是清单被当成一个仓库缓存：磁盘文件数与孤儿计数各虚高 1。
+ * 单看只是小数点后的失真，但它让「孤儿残留」这条线索永远为假。
+ */
+const NON_REPO_FILES = new Set(['_discovery.json', '_manifest.json'])
+const files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && !NON_REPO_FILES.has(f))
 const probed = new Set(files.map(f => f.replace(/\.json$/, '').replace('__', '/')))
 
 /** 需要以非 0 退出的问题 */
 const problems = []
 
+/*
+ * 被判定器**故意**拒绝的仓库：它们没有语料缓存是设计结果，不是缺口。
+ *
+ * 质量门槛（Q1 低 star / Q2 低 fork / Q3 README 无示例）与硬拒绝规则
+ * （R1 无 SKILL.md、R3 主题无关等）都会让仓库止步于发现阶段。
+ * 门槛上线后约 35% 的仓库属于此类 —— 若把它们算进 missing，
+ * 审计会**永远**以「覆盖率缺口」失败，把流水线锁死。
+ *
+ * 判定日志缺失（老缓存 / 未跑判定）时按原逻辑处理，不放宽。
+ */
+function readSkippedRepos() {
+  const file = dir + '/_triage.jsonl'
+  if (!fs.existsSync(file)) return null
+  const skipped = new Set()
+  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+    if (!line.trim()) continue
+    try {
+      const rec = JSON.parse(line)
+      if (rec?.decision === 'SKIP' && typeof rec.repo === 'string') skipped.add(rec.repo.toLowerCase())
+    } catch { /* 单行损坏不应让审计崩掉 */ }
+  }
+  return skipped.size > 0 ? skipped : new Set()
+}
+const skipped = readSkippedRepos()
+
 /** 覆盖率必须按「本次发现列表」算，而不是按缓存文件总数 */
 const live = new Set(disc.repos.map(r => r.repo))
-const missing = disc.repos.filter(r => !probed.has(r.repo))
+const rejected = disc.repos.filter(r => skipped?.has(r.repo.toLowerCase()))
+const missing = disc.repos.filter(r => !probed.has(r.repo) && !skipped?.has(r.repo.toLowerCase()))
 const orphan = [...probed].filter(p => !live.has(p))
-const covered = live.size - missing.length
+/** 覆盖率的分母只算「本该有缓存」的仓库 —— 被拒绝的不参与 */
+const expected = live.size - rejected.length
+const covered = expected - missing.length
 
 console.log('=== coverage ===')
-console.log(`covered: ${covered} / ${live.size} | missing: ${missing.length}`)
+console.log(
+  `covered: ${covered} / ${expected} | missing: ${missing.length}` +
+  (skipped ? ` | rejected by gate: ${rejected.length}` : ''),
+)
 /*
  * 旧写法直接报 `probed.size / disc.repos.length`。但 probed 是**缓存目录里
  * 全部 json 文件**，仓库掉出 star 前 300 后其缓存文件永不清理，
@@ -39,9 +80,11 @@ console.log(`cache files on disk: ${files.length}（其中孤儿 ${orphan.length
 for (const r of missing) console.log('  MISS ★' + r.stars, r.repo)
 
 /* 覆盖率缺口要拦住：拿不到内容意味着站点少了这些技能 */
-const coverage = live.size === 0 ? 1 : covered / live.size
+const coverage = expected === 0 ? 1 : covered / expected
 if (missing.length > 0) {
-  problems.push(`覆盖率缺口：${missing.length}/${live.size} 个已发现仓库没有语料缓存（${(coverage * 100).toFixed(1)}%）`)
+  problems.push(
+    `覆盖率缺口：${missing.length}/${expected} 个应抓取的仓库没有语料缓存（${(coverage * 100).toFixed(1)}%）`,
+  )
 }
 
 /* 限流降级：loader 把状态写进了清单，这里程序化读出来 */
