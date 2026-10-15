@@ -206,8 +206,64 @@ const SECRET_PATTERNS = [
   /\bAIza[0-9A-Za-z_-]{35}\b/,
   /-----BEGIN\s+(?:RSA|OPENSSH|EC|DSA|PGP)?\s*PRIVATE KEY-----/,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
-  /\b(?:api[_-]?key|secret|passwd|password|token)\s*[:=]\s*["'][^"'\s]{12,}["']/i,
+  /\b(?:api[_-]?key|secret|passwd|password|token)\s*[:=]\s*["']([^"'\s]{12,})["']/i,
 ]
+
+/**
+ * 判断一段疑似密钥的值是不是**占位符**。
+ *
+ * 为什么必须有：最后那条通用模式匹配「赋值给 api_key/secret/token 的引号字符串」，
+ * 而 README 里的示例代码到处都是这种写法。实测误杀：
+ * `ComposioHQ/awesome-claude-skills`（200 个 skill）因为这一行被 R10 拒绝 ——
+ *
+ *     client = anthropic.Anthropic(api_key="your-api-key")
+ *
+ * `"your-api-key"` 显然是占位符，不是密钥。
+ * 这个假阳性在只扫 README 前 2000 字符时是潜伏的（示例代码通常在后面），
+ * 扩到全文扫描后才暴露出来。
+ *
+ * 判据刻意保守：宁可漏掉一个真密钥，也不要因为示例代码把整个仓库拒掉 ——
+ * 误杀的代价是内容凭空消失，而漏检只是维持现状。
+ */
+function looksLikePlaceholder(value: string): boolean {
+  const v = value.trim()
+  // 太短的不可能是密钥，也不值得报警
+  if (v.length < 12) return true
+  // 模板变量：<your-key> / ${API_KEY} / {{token}} / %s
+  if (/[<>${}%]/.test(v)) return true
+  // 「your-yyy / my-yyy / xxx / example / dummy / fake / sample / placeholder / redacted / changeme」
+  if (/(?:^|[-_])your[-_]|my[-_](?:key|token|secret)|xxx|example|dummy|fake|sample|placeholder|redact|changeme|todo|test/i.test(v)) {
+    return true
+  }
+  // 纯重复或纯占位符号
+  if (/^(.)\1+$/.test(v)) return true
+  if (/^[xX*.\-_]+$/.test(v)) return true
+  // 单词拼接但没有随机性（全小写字母且无数字，如 "secretpassword"）—— 真密钥基本都含数字或大小写混合
+  if (/^[a-z]+$/.test(v)) return true
+  return false
+}
+
+/** 逐个模式找密钥；通用模式额外排除占位符。返回命中的特征片段 */
+function findSecret(text: string): string | null {
+  for (let i = 0; i < SECRET_PATTERNS.length; i++) {
+    const re = SECRET_PATTERNS[i]
+    const m = re.exec(text)
+    if (!m) continue
+    // 最后一条是通用模式，捕获组 1 是值本身
+    if (i === SECRET_PATTERNS.length - 1 && m[1] && looksLikePlaceholder(m[1])) {
+      // 该模式可能在别处还有真命中，逐个扫一遍再放弃
+      const global = new RegExp(re.source, `${re.flags}g`)
+      let hit: RegExpExecArray | null
+      let found = false
+      while ((hit = global.exec(text)) !== null) {
+        if (hit[1] && !looksLikePlaceholder(hit[1])) { found = true; break }
+      }
+      if (!found) continue
+    }
+    return m[0].slice(0, 24)
+  }
+  return null
+}
 
 /**
  * R5 中「明确拒绝使用」的声明。
@@ -473,7 +529,7 @@ export function judgeMetadata(meta: RepoMeta, opts: JudgeOptions = {}): Verdict 
   if (desc) {
     const injection = matchAny(desc, INJECTION_PATTERNS)
     if (injection) return skip('R9', `描述含提示注入特征「${injection}」`, 0.85)
-    const secret = matchAny(desc, SECRET_PATTERNS)
+    const secret = findSecret(desc)
     if (secret) return skip('R10', '描述含疑似硬编码密钥', 0.8)
   }
 
@@ -555,7 +611,7 @@ export function judgeProbe(probe: RepoProbe, stage1: Verdict, opts: JudgeOptions
   /* --- R9 / R10：内容里的注入与密钥（查全文）--- */
   const injection = matchAny(readmeFull, INJECTION_PATTERNS)
   if (injection) return skip('R9', `README 含提示注入「${injection}」`, 0.9)
-  const secret = matchAny(readmeFull, SECRET_PATTERNS)
+  const secret = findSecret(readmeFull)
   if (secret) return skip('R10', 'README 含疑似硬编码密钥', 0.9)
 
   /* --- R1 空壳：无 SKILL.md，或只有 README 且无实质指令 --- */
