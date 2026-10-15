@@ -16,8 +16,9 @@
     "split": "node scripts/split-assets.mjs",
     "audit": "node scripts/audit.mjs",
     "triage": "node scripts/triage.mjs",
-    "deploy:zh": "npx --yes wrangler@4 deploy -c wrangler.zh.jsonc",
-    "deploy:en": "npx --yes wrangler@4 deploy -c wrangler.en.jsonc"
+    "predeploy": "node scripts/predeploy.mjs",
+    "deploy:zh": "npm run predeploy && npx --yes wrangler@4 deploy -c wrangler.zh.jsonc",
+    "deploy:en": "npm run predeploy && npx --yes wrangler@4 deploy -c wrangler.en.jsonc"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",
