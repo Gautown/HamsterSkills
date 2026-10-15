@@ -472,8 +472,16 @@ export function judgeProbe(probe: RepoProbe, stage1: Verdict, opts: JudgeOptions
   }
 
   /* --- R8 内容过薄 --- */
-  if (probe.totalTokens < THIN_TOKENS) {
+  /*
+   * totalTokens < 0 表示「算不出来」（调用方拿不到文件大小也没缓存正文）。
+   * 此时必须跳过 R8 —— 把「未知」当「内容为空」会把好仓库整批误杀。
+   * 纪律上与 MISSING_INFO 一致：信息不足就不下结论。
+   */
+  if (probe.totalTokens >= 0 && probe.totalTokens < THIN_TOKENS) {
     return skip('R8', `skill 内容约 ${probe.totalTokens} token，少于 ${THIN_TOKENS}`, 0.9)
+  }
+  if (probe.totalTokens < 0) {
+    flags.push({ code: 'MISSING_INFO', detail: '无法估算内容体量，跳过 R8 判定', degrades: false })
   }
 
   /* --- R4 纯引流：README 以引流为主 --- */

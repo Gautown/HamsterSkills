@@ -188,7 +188,20 @@ interface TriageRecord {
 interface TreeResponse {
   sha: string
   truncated?: boolean
-  tree: Array<{ path: string; type: string; sha: string }>
+  /**
+   * `size` 是 blob 的字节数 —— 阶段 2 的 R8（内容过薄）靠它估算 token。
+   * 之前误用了「按文件个数估」，冷缓存下算出 1 个文件 = 16 token，
+   * 导致每次冷重建都误杀一批仓库（实测 top50 里被 R8 砍掉 16 个）。
+   */
+  tree: Array<{ path: string; type: string; sha: string; size?: number }>
+}
+
+/** 一个已确认的 SKILL.md；size 来自文件树的 blob 字节数，用于阶段 2 的 token 估算 */
+interface SkillFileRef {
+  path: string
+  sha: string
+  /** 字节数；缓存路径取不到时为 0，表示「未知」 */
+  size: number
 }
 
 /** 映射一个远端 skill 所需的上下文 */
@@ -595,7 +608,7 @@ async function loadRepo(
 
   let ref = cfg.branch || cached?.ref || ''
   let treeSha = ''
-  let files: Array<{ path: string; sha: string }> = []
+  let files: SkillFileRef[] = []
   let cacheOnly = false
   let skippedFetch = false
 
@@ -627,7 +640,9 @@ async function loadRepo(
         opts.token,
       )
       treeSha = tree.sha
-      files = tree.tree.filter(item => item.type === 'blob' && isSkillFile(item.path, cfg))
+      files = tree.tree
+        .filter(item => item.type === 'blob' && isSkillFile(item.path, cfg))
+        .map(item => ({ path: item.path, sha: item.sha, size: item.size ?? 0 }))
       if (tree.truncated) {
         logger.warn(`[github-skills] ${cfg.repo}: 文件树被 GitHub 截断，可能漏掉部分 skill`)
       }
@@ -928,7 +943,7 @@ function knownSkillPaths(cacheDir: string | URL | undefined, root: URL): Set<str
 async function buildProbe(
   cfg: RemoteRepo,
   ref: string,
-  files: Array<{ path: string; sha: string }>,
+  files: SkillFileRef[],
   opts: ResolvedOptions,
   root: URL,
   logger: LoaderContext['logger'],
@@ -950,10 +965,21 @@ async function buildProbe(
     }
   }
 
+  /*
+   * token 估算：优先用文件树里 blob 的字节数。
+   *
+   * 缓存正文次之（同样免费）。两者都拿不到时返回 -1 表示「未知」，
+   * judgeProbe 见到负数会跳过 R8 —— **绝不拿「未知」当「内容为空」**。
+   *
+   * 这里原本回退成「每文件 64 字符」，冷重建时 1 个文件算出 16 token，
+   * 于是每次从零抓取都会把一批好仓库按「内容过薄」砍掉
+   * （实测 star 前 50 的仓库里 16 个被 R8 误杀，估值全是 16/32/64 这种整数）。
+   */
   const [owner, name] = cfg.repo.split('/')
   const cached = readCache(cacheFilePath(opts.cacheDir, root, owner, name ?? ''))
-  // token 估算复用缓存里的正文长度，避免为了估算把 SKILL.md 再下载一遍
-  const bodyChars = skillFiles.reduce((sum, f) => sum + (cached?.files?.[f]?.body?.length ?? 0), 0)
+  const bytesFromTree = files.reduce((sum, f) => sum + f.size, 0)
+  const bytesFromCache = files.reduce((sum, f) => sum + (cached?.files?.[f.path]?.body?.length ?? 0), 0)
+  const totalBytes = bytesFromTree || bytesFromCache
 
   return {
     paths: skillFiles,
@@ -962,8 +988,8 @@ async function buildProbe(
     skillFiles,
     referenceFiles: [],
     scriptFiles: [],
-    // 缓存里没有正文时用文件名长度兜底，至少能区分「空文件」与「有内容」
-    totalTokens: estimateTokens('x'.repeat(bodyChars || skillFiles.length * 64)),
+    // 0 = 确实没有任何 skill 正文；负数 = 未知，判定时应跳过 R8
+    totalTokens: totalBytes > 0 ? estimateTokens('x'.repeat(totalBytes)) : skillFiles.length === 0 ? 0 : -1,
   }
 }
 
@@ -1077,8 +1103,18 @@ function encodePathSegments(value: string): string {
     .join('/')
 }
 
-function cachedFileList(files: Record<string, CachedFile>): Array<{ path: string; sha: string }> {
-  return Object.entries(files).map(([filePath, file]) => ({ path: filePath, sha: file.sha }))
+/**
+ * 缓存里的文件列表还原成 SkillFileRef。
+ *
+ * size 取缓存正文的字节数；缓存里没有正文（尚未下载）时为 0，
+ * 阶段 2 会把「总量为 0」理解成「未知」而不是「内容为空」。
+ */
+function cachedFileList(files: Record<string, CachedFile>): SkillFileRef[] {
+  return Object.entries(files).map(([filePath, file]) => ({
+    path: filePath,
+    sha: file.sha,
+    size: file.body ? Buffer.byteLength(file.body, 'utf8') : 0,
+  }))
 }
 
 /** 以固定并发度执行异步任务（按下标写入结果，保持顺序稳定） */

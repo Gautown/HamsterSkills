@@ -331,6 +331,33 @@ test('R8：skill 内容过薄', () => {
   assert.equal(v.reason_code, 'R8')
 })
 
+test('★ R8：体量未知（totalTokens < 0）时不下结论', () => {
+  /*
+   * 回归：冷重建时拿不到文件大小也没有缓存正文，
+   * 旧实现回退成「每文件 64 字符」，1 个文件算出 16 token，
+   * 于是 star 前 50 的仓库里 16 个被 R8 误杀（估值全是 16/32/64/80/96）。
+   *
+   * -1 必须表示「算不出来」，而不是「内容为空」。
+   */
+  const v = judgeProbe(
+    probe({ totalTokens: -1, skillFiles: ['a/SKILL.md', 'b/SKILL.md', 'c/SKILL.md', 'd/SKILL.md'] }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW },
+  )
+  assert.notEqual(v.reason_code, 'R8', `体量未知时不得判 R8，实际 ${v.reason_code}`)
+  assert.notEqual(v.decision, 'SKIP', '体量未知时不得丢弃')
+})
+
+test('R8：体量确实为 0 且无 skill 文件时才判空壳', () => {
+  const v = judgeProbe(
+    probe({ totalTokens: 0, skillFiles: ['a/SKILL.md'], paths: ['a/SKILL.md'] }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW },
+  )
+  assert.equal(v.reason_code, 'R8')
+  assert.equal(v.decision, 'SKIP')
+})
+
 test('R7：README 自述草稿/个人笔记', () => {
   const v = judgeProbe(
     probe({
