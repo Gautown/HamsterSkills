@@ -86,9 +86,15 @@ jobs:
             .cache/ai-classify.json
           # run_id 保证每次运行的 save 都不会撞 key；
           # restore-keys 让本次恢复「最近一次」写入的语料，实现增量聚合。
-          key: skills-corpus-${{ github.run_id }}
+          #
+          # CORPUS_CACHE_VERSION：语料格式的版本段。改动它即可让全部历史缓存失效 ——
+          # 比逐个调 API 删缓存可靠（无需令牌、也不依赖 GitHub 的缓存清理接口），
+          # 且旧缓存会随 GitHub 自身的过期策略自动回收。
+          # 什么时候该 +1：语料文件结构变了、判定规则改了、
+          # 或像本次这样要整体丢弃旧语料重新抓取。
+          key: skills-corpus-v${{ vars.CORPUS_CACHE_VERSION || '2' }}-${{ github.run_id }}
           restore-keys: |
-            skills-corpus-
+            skills-corpus-v${{ vars.CORPUS_CACHE_VERSION || '2' }}-
 
       # ---- 第一次构建：拉取/复用语料，并由 loader 写出技能清单 ----
       - name: 构建（写入技能清单）
@@ -129,4 +135,4 @@ jobs:
           path: |
             .cache/skills-remote
             .cache/ai-classify.json
-          key: skills-corpus-${{ github.run_id }}
+          key: skills-corpus-v${{ vars.CORPUS_CACHE_VERSION || '2' }}-${{ github.run_id }}
