@@ -40,16 +40,22 @@ const healthy = over => ({
  * @param {Partial<RepoProbe>} [over]
  * @returns {RepoProbe}
  */
-const probe = over => ({
-  paths: ['a/SKILL.md', 'README.md'],
-  readme: '## Usage\n\n```bash\nnpm i\n```\n',
-  readmeLength: 800,
-  skillFiles: ['a/SKILL.md'],
-  referenceFiles: [],
-  scriptFiles: [],
-  totalTokens: 900,
-  ...over,
-})
+const probe = (over = {}) => {
+  const base = {
+    paths: ['a/SKILL.md', 'README.md'],
+    readme: '## Usage\n\n```bash\nnpm i\n```\n',
+    readmeFull: '## Usage\n\n```bash\nnpm i\n```\n',
+    readmeLength: 800,
+    skillFiles: ['a/SKILL.md'],
+    referenceFiles: [],
+    scriptFiles: [],
+    totalTokens: 900,
+  }
+  const merged = { ...base, ...over }
+  // 只给 readme 时，readmeFull 跟随它 —— 多数用例关心的是同一段文本
+  if (over.readme !== undefined && over.readmeFull === undefined) merged.readmeFull = over.readme
+  return merged
+}
 
 /* ------------------------------ 阶段 1 ------------------------------ */
 
@@ -309,6 +315,72 @@ test('健康仓库：阶段 1 放行', () => {
 test('门槛默认不启用：不传 quality 时与规范行为一致', () => {
   const v = judgeMetadata(healthy({ stars: 3, forks: 0 }), { now: NOW })
   assert.equal(v.decision, 'PASS', '未配置门槛时不该拦低星仓库')
+})
+
+test('★ Q3：用法示例在 2000 字符之后也要认（查全文而非采样）', () => {
+  /*
+   * 回归：这条规则曾把站点从 8769 个 skill 砍到 2311。
+   *
+   * 被拒的头部仓库 README 长 1 万~11 万字符，用法示例**全部**落在
+   * 前 2000 字符之外 —— 开头是徽章、目录、技能列表。判据拿到的
+   * 不是「没有示例」，而是「示例在截断线之后」。
+   *
+   * 实测（线上 CI 日志）：413 次 Q3 拒绝是唯一的拒绝原因。
+   */
+  const head = '# Awesome Skills\n\n[![badge]](x)\n\n## Contents\n\n- [One](#one)\n- [Two](#two)\n'
+  // 用一个长填充把用法示例推到 2000 字符之后
+  const filler = 'Some skill description line.\n'.repeat(120)
+  const usage = '\n## Installation\n\n```bash\nnpm install -g awesome-skills\n```\n'
+  const full = head + filler + usage
+
+  assert.ok(full.indexOf('```') > 2000, '前提：示例必须落在 2000 字符之后')
+
+  const v = judgeProbe(
+    probe({ readme: full.slice(0, 2000), readmeFull: full, readmeLength: full.length }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW, quality: { requireUsageExample: true } },
+  )
+  assert.notEqual(v.reason_code, 'Q3', '全文里有示例就不该判 Q3')
+})
+
+test('★ Q3：只有采样时行为不变（老调用方退化为旧行为）', () => {
+  // 没提供 readmeFull 时退回采样，不应因此崩溃或放宽
+  const sample = '# Title\n\nA powerful toolkit.\n'
+  const v = judgeProbe(
+    probe({ readme: sample, readmeFull: undefined, readmeLength: 2000 }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW, quality: { requireUsageExample: true } },
+  )
+  assert.equal(v.reason_code, 'Q3')
+})
+
+test('★ R9/R10：注入与密钥藏在采样之外也要抓到', () => {
+  /*
+   * 安全扫描必须覆盖全文 —— 藏在第 5000 字符的密钥和开头的一样危险。
+   * 此前只扫前 2000 字符，属于检测盲区。
+   */
+  const filler = 'harmless line.\n'.repeat(300)
+  const withSecret = `# Tool\n\n${filler}\n\nSet GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789\n`
+  assert.ok(withSecret.indexOf('ghp_') > 2000, '前提：密钥必须落在 2000 字符之后')
+
+  const v = judgeProbe(
+    probe({ readme: withSecret.slice(0, 2000), readmeFull: withSecret, readmeLength: withSecret.length }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW },
+  )
+  assert.equal(v.reason_code, 'R10')
+})
+
+test('R4：引流判定仍只看采样（避免深处一句赞助声明误伤）', () => {
+  // 采样里干净、全文里有推广词 —— 不应因全文而升级为 R4
+  const clean = '# Tool\n\n## Usage\n\n```bash\nnpm i tool\n```\n'
+  const full = clean + '\n'.repeat(3000) + '\n赞助 关注公众号 加微信 付费社群\n'
+  const v = judgeProbe(
+    probe({ readme: clean, readmeFull: full, readmeLength: full.length }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW },
+  )
+  assert.notEqual(v.reason_code, 'R4')
 })
 
 test('Q1：star 低于门槛直接排除', () => {

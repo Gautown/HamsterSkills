@@ -1005,7 +1005,9 @@ async function buildProbe(
 
   return {
     paths: skillFiles,
+    // 采样给语气类判定（R4/R7），全文给结构类与安全类判定（Q3/R9/R10）
     readme: readme.slice(0, 2_000),
+    readmeFull: readme,
     readmeLength: readme.length,
     skillFiles,
     referenceFiles: [],

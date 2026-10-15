@@ -57,12 +57,32 @@ export interface RepoMeta {
   latest_release_at?: string | null
 }
 
-/** 阶段 2 输入：文件树 + README 前若干字符，不含完整内容 */
+/** 阶段 2 输入：文件树 + README，不含完整内容文件 */
 export interface RepoProbe {
   /** 完整文件路径列表（仅类型判断，不含内容） */
   paths: string[]
-  /** README 前 N 字符（N 默认 2000） */
+  /**
+   * README **开头部分**（默认前 2000 字符）。
+   *
+   * 给「语气/性质」类判定用：R4 引流、R7 草稿、S4 只有营销话术。
+   * 这些判定看的是项目**怎么介绍自己**，开头就是最有代表性的位置；
+   * 扫全文反而会被深处的赞助声明、贡献者名单之类误伤。
+   */
   readme: string
+  /**
+   * README **全文**。
+   *
+   * 给「结构性 / 安全性」判定用：
+   *   - Q3 用法示例：示例章节通常在徽章、目录、技能列表之后，
+   *     实测被拒的头部仓库 README 长 1 万~11 万字符，
+   *     用法示例**全部**落在前 2000 字符之外
+   *   - R9 提示注入 / R10 明文密钥：安全扫描必须覆盖全文，
+   *     藏在第 5000 字符的密钥和开头的一样危险
+   *
+   * 拉全文不花 API 配额（raw.githubusercontent.com 不限流），
+   * 只多花带宽；每个仓库只读一次，读完即弃。
+   */
+  readmeFull: string
   /** README 全文长度（判断「只有 README」的占比） */
   readmeLength: number
   /** 命中的 SKILL.md 路径 */
@@ -520,17 +540,22 @@ export function judgeProbe(probe: RepoProbe, stage1: Verdict, opts: JudgeOptions
   if (stage1.decision === 'SKIP') return stage1
 
   const readme = probe.readme ?? ''
+  /*
+   * 结构性 / 安全性检查用全文；缺 readmeFull 时退回采样（老调用方/测试）。
+   * 见 RepoProbe.readmeFull 的注释：用法示例与安全问题都可能在采样之外。
+   */
+  const readmeFull = probe.readmeFull || readme
   const flags: SoftFlag[] = []
 
-  /* --- 质量门槛：README 必须给出具体用法示例 --- */
-  if (opts.quality?.requireUsageExample === true && !hasUsageExample(readme)) {
+  /* --- 质量门槛：README 必须给出具体用法示例（查全文）--- */
+  if (opts.quality?.requireUsageExample === true && !hasUsageExample(readmeFull)) {
     return skip('Q3', 'README 没有可照做的用法示例', 0.8)
   }
 
-  /* --- R9 / R10：内容里的注入与密钥 --- */
-  const injection = matchAny(readme, INJECTION_PATTERNS)
+  /* --- R9 / R10：内容里的注入与密钥（查全文）--- */
+  const injection = matchAny(readmeFull, INJECTION_PATTERNS)
   if (injection) return skip('R9', `README 含提示注入「${injection}」`, 0.9)
-  const secret = matchAny(readme, SECRET_PATTERNS)
+  const secret = matchAny(readmeFull, SECRET_PATTERNS)
   if (secret) return skip('R10', 'README 含疑似硬编码密钥', 0.9)
 
   /* --- R1 空壳：无 SKILL.md，或只有 README 且无实质指令 --- */
