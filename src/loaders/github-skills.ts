@@ -664,8 +664,14 @@ async function loadRepo(
    * 复用已经取到的文件树，**不额外请求**；README 只在必要时读一次（见下），
    * 判定结果写进缓存，仓库未变更时复用。
    */
-  if (cfg.triage && !cfg.exemptFromTriage && !state.rateLimited) {
-    // 文件树与上次一致时，判定结论也不会变，直接复用缓存里的
+  if (cfg.triage && !cfg.exemptFromTriage) {
+    /*
+     * 缓存里已有阶段 2 结论时**无论是否限流都沿用**。
+     *
+     * 那个结论当初是靠证据（文件树 + README）得出的，重新认定一次不需要额外请求；
+     * 而限流时若跳过它，会让已判 SKIP 的仓库被「洗回」PASS ——
+     * 收尾那次 recordTriage 还会用阶段 1 的结论把 SKIP 覆盖掉，日志也跟着说谎。
+     */
     const cachedVerdict = cacheOnly || treeUnchanged ? cached?.triage : undefined
     if (cachedVerdict) {
       cfg.triage = cachedVerdict
@@ -674,6 +680,9 @@ async function loadRepo(
         logger.warn(`[github-skills] ${cfg.repo}: 阶段 2 判定 SKIP（${cachedVerdict.reason_code}），沿用缓存结论`)
         return 0
       }
+    } else if (state.rateLimited) {
+      // 没有历史结论可沿用，且限流下不做新探测 —— 保留阶段 1 的判定
+      logger.info(`[github-skills] ${cfg.repo}: 限流中，跳过阶段 2 探测`)
     } else {
       const probe = await buildProbe(cfg, ref, files, opts, config.root, logger)
       const verdict = probe ? judgeProbe(probe, cfg.triage, { knownRepos: knownSkillPaths(opts.cacheDir, config.root) }) : null
@@ -682,14 +691,16 @@ async function loadRepo(
         recordTriage(state, cfg, verdict, verdict.decision === 'SKIP' ? [] : files.map(f => f.path))
         if (verdict.decision === 'SKIP') {
           logger.warn(`[github-skills] ${cfg.repo}: 阶段 2 判定 SKIP（${verdict.reason_code} ${verdict.reason}）`)
-          // 判定为不要：清掉语料缓存，避免下次构建继续用旧内容
-          if (cached) {
-            try {
-              fs.unlinkSync(cacheFile)
-            } catch (error) {
-              logger.warn(`[github-skills] ${cfg.repo}: 清理语料缓存失败 — ${message(error)}`)
-            }
-          }
+          /*
+           * 刻意**不删语料缓存**。
+           *
+           * 曾在这里 unlink 缓存，理由是「避免下次构建继续用旧内容」。
+           * 但 R4 误判一次就等于内容被物理删除 —— `code-yeongyu/oh-my-openagent`
+           * 被误判后 60 个 skill 从站��消失（清单 8766 → 8729），且必须重新下载才能回来。
+           *
+           * 保留缓存的代价只是「下轮构建少更新一点」，收益是误判可一键回退：
+           * 规则放宽后直接删掉 cached.triage 或恢复缓存文件即可，内容立刻回来。
+           */
           return 0
         }
       }

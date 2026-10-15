@@ -114,12 +114,23 @@ const TOPIC_TERMS = [
   'awesome-', 'agentskills', 'claude-code', 'agents.md', 'cursorrules',
 ]
 
-/** R4 纯引流特征 */
+/**
+ * R4 纯引流特征 —— **只收真正的商业导流**。
+ *
+ * 最初这里还混着 discord server / join our / sponsor / newsletter signup，
+ * 结果把 `code-yeongyu/oh-my-openagent` 误杀了：
+ * 那是个 60 个 SKILL.md 的正经技能合集，README 顶部的
+ * 「Join our Discord」「Sponsor」在开源项目里是标配，
+ * 命中 ≥2 项就判 R4，60 个 skill 当场被删出站点（总数 8766 → 8729）。
+ *
+ * 社区链接只能证明「有社区」，证明不了「在导流」。
+ * 判断引流要看的是**钱和联系方式**，不是有没有 Discord。
+ */
 const PROMO_TERMS = [
   '付费社群', '公众号', '知识星球', '训练营', '一对一', '课程推广', '加微信',
-  '赞助', '扫码', '关注公众号', '引流',
-  'paid community', 'discord server', 'join our', 'sponsor', 'newsletter signup',
-  'affiliate', 'promo code', 'coupon', 'enroll now', 'dm me', 'paid course',
+  '扫码', '关注公众号', '引流', '限时优惠', '内部渠道',
+  'paid community', 'paid course', 'affiliate', 'promo code', 'coupon',
+  'enroll now', 'dm me', 'dm us', 'buy my', 'subscribe for access',
 ]
 
 /** R7 个人草稿特征 */
@@ -268,6 +279,22 @@ const countTerms = (text: string, terms: string[]): number => {
   return terms.filter(term => lower.includes(term)).length
 }
 
+/** 命中术语占用的字符数，用于估算「引流内容在 README 里占多大篇幅」 */
+const countTermChars = (text: string, terms: string[]): number => {
+  const lower = text.toLowerCase()
+  let total = 0
+  for (const term of terms) {
+    let from = 0
+    for (;;) {
+      const at = lower.indexOf(term, from)
+      if (at < 0) break
+      total += term.length
+      from = at + term.length
+    }
+  }
+  return total
+}
+
 /** 找第一个命中的敏感模式，返回命中的特征名（便于写进 reason） */
 function matchAny(text: string, patterns: RegExp[]): string | null {
   for (const re of patterns) {
@@ -366,7 +393,7 @@ export function judgeMetadata(meta: RepoMeta, opts: JudgeOptions = {}): Verdict 
   /* --- R4 纯引流：描述级引流且完全无主题信号才判硬拒绝 --- */
   const promoHits = countTerms(desc, PROMO_TERMS)
   const topicHit = hasTopicSignal(`${meta.repo} ${desc} ${topics.join(' ')}`)
-  if (promoHits > 0 && !topicHit) {
+  if (promoHits >= 2 && !topicHit) {
     return skip('R4', `描述以引流为主且无主题信号（命中 ${promoHits} 项）`, 0.75)
   }
 
@@ -450,8 +477,16 @@ export function judgeProbe(probe: RepoProbe, stage1: Verdict, opts: JudgeOptions
   }
 
   /* --- R4 纯引流：README 以引流为主 --- */
-  if (countTerms(readme, PROMO_TERMS) >= 2) {
-    return skip('R4', 'README 以课程/社群导流为主', 0.8)
+  /*
+   * 光靠「命中 ≥2 项」不够 —— README 里塞一句推广语就够凑数。
+   * 加一层篇幅占比：引流必须**占住 README 的相当部分**才叫「以引流为主」，
+   * 否则那些只在开头放一行推广、其余全是正经文档的仓库会被误杀。
+   */
+  const promoHits = countTerms(readme, PROMO_TERMS)
+  const promoChars = countTermChars(readme, PROMO_TERMS)
+  const promoShare = probe.readmeLength > 0 ? promoChars / probe.readmeLength : 0
+  if (promoHits >= 2 && promoShare >= 0.08) {
+    return skip('R4', `README 约 ${(promoShare * 100).toFixed(0)}% 是课程/社群导流`, 0.8)
   }
 
   /* --- R7 个人草稿 --- */

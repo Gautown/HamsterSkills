@@ -113,13 +113,93 @@ test('R4：描述以引流为主且无主题信号才硬拒绝', () => {
   const v = judgeMetadata(
     healthy({
       repo: 'acme/notes',
-      description: '关注公众号领取免费资料，加入我们的付费社群',
+      description: '关注公众号领取免费资料，加微信加入我们的付费社群',
       topics: [],
     }),
     { now: NOW },
   )
   assert.equal(v.decision, 'SKIP')
   assert.equal(v.reason_code, 'R4')
+})
+
+test('★ R4：README 里的社区链接不算引流证据', () => {
+  /*
+   * 回归：code-yeongyu/oh-my-openagent 被 R4 误杀，60 个 skill 从站点消失
+   * （清单 8766 → 8729）。
+   *
+   * 当时 PROMO_TERMS 里混着 discord server / join our / sponsor，
+   * 而这些是开源项目 README 的标配：一个 60 个 SKILL.md 的正经合集
+   * 必然命中 ≥2 项。
+   */
+  const readme = [
+    '# oh-my-openagent',
+    '',
+    'A batteries-included agent harness with 60 skills.',
+    '',
+    '## Join our Discord',
+    'https://discord.gg/example',
+    '',
+    '## Sponsor',
+    'If this project helps you, consider sponsoring it.',
+    '',
+    '## Installation',
+    '```bash',
+    'npm install -g oh-my-openagent',
+    '```',
+    '',
+    '## Skills',
+    'Run `oms list` to see all 60 available skills.',
+  ].join('\n')
+
+  const v = judgeProbe(
+    probe({
+      readme,
+      readmeLength: readme.length,
+      skillFiles: Array.from({ length: 60 }, (_, i) => `skills/s${i}/SKILL.md`),
+      paths: Array.from({ length: 60 }, (_, i) => `skills/s${i}/SKILL.md`),
+      totalTokens: 60_000,
+    }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW },
+  )
+  assert.notEqual(v.reason_code, 'R4', '社区链接不得构成 R4 判定')
+})
+
+test('★ R4：整篇都是课程/社群推广才硬拒绝', () => {
+  // 引流内容确实占住 README 相当篇幅时，必须能判出来
+  const readme = [
+    '# 前端训练营',
+    '扫码加微信，加入我们的付费社群',
+    '限时优惠，优惠码 coupon123',
+    '关注公众号领取内部渠道资料',
+    '报名联系：enroll now',
+  ].join('\n')
+  const v = judgeProbe(
+    probe({ readme, readmeLength: readme.length }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW },
+  )
+  assert.equal(v.reason_code, 'R4')
+})
+
+test('R4：README 里只顺带提一句推广，不硬拒绝', () => {
+  // 命中 ≥2 项但篇幅占比极低 —— 不构成「以引流为主」
+  const readme = [
+    '# PDF 处理',
+    '本工具把 PDF 拆成图片，批量处理更方便。',
+    '```bash',
+    'npm i pdf-tool',
+    '```',
+    '觉得有用可以加微信进群交流（enroll now）。',
+    '详细用法见下方章节……',
+    '……'.repeat(200),
+  ].join('\n')
+  const v = judgeProbe(
+    probe({ readme, readmeLength: readme.length }),
+    judgeMetadata(healthy(), { now: NOW }),
+    { now: NOW },
+  )
+  assert.notEqual(v.reason_code, 'R4')
 })
 
 test('R4：带主题信号的引流描述不硬拒绝（避免误杀）', () => {
