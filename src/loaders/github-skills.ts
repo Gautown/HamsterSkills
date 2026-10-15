@@ -633,14 +633,14 @@ async function loadRepo(
     // 仓库未推送新提交：全部走缓存，0 次网络请求
     ref = cached.ref
     treeSha = cached.treeSha
-    files = cachedFileList(cached.files)
+    files = cachedFileList(cached.files, cfg)
     cacheOnly = true
     skippedFetch = true
   } else if (state.rateLimited) {
     if (cached) {
       ref = cached.ref
       treeSha = cached.treeSha
-      files = cachedFileList(cached.files)
+      files = cachedFileList(cached.files, cfg)
       cacheOnly = true
     } else {
       logger.warn(`[github-skills] ${cfg.repo}: API 限额已用尽且无缓存，跳过`)
@@ -669,7 +669,7 @@ async function loadRepo(
         logger.warn(`[github-skills] ${cfg.repo}: 拉取失败，改用缓存（${cached.fetchedAt}）— ${message(error)}`)
         ref = cached.ref
         treeSha = cached.treeSha
-        files = cachedFileList(cached.files)
+        files = cachedFileList(cached.files, cfg)
         cacheOnly = true
       } else if (strict) {
         throw new Error(`[github-skills] ${cfg.repo}: 拉取失败且无可用缓存 — ${message(error)}`)
@@ -707,7 +707,7 @@ async function loadRepo(
     const cachedVerdict = cacheOnly || treeUnchanged ? cached?.triage : undefined
     if (cachedVerdict) {
       cfg.triage = cachedVerdict
-      recordTriage(state, cfg, cachedVerdict, cached ? cachedFileList(cached.files).map(f => f.path) : [])
+      recordTriage(state, cfg, cachedVerdict, cached ? cachedFileList(cached.files, cfg).map(f => f.path) : [])
       if (cachedVerdict.decision === 'SKIP') {
         logger.warn(`[github-skills] ${cfg.repo}: 阶段 2 判定 SKIP（${cachedVerdict.reason_code}），沿用缓存结论`)
         return 0
@@ -1120,12 +1120,18 @@ function encodePathSegments(value: string): string {
  * size 取缓存正文的字节数；缓存里没有正文（尚未下载）时为 0，
  * 阶段 2 会把「总量为 0」理解成「未知」而不是「内容为空」。
  */
-function cachedFileList(files: Record<string, CachedFile>): SkillFileRef[] {
-  return Object.entries(files).map(([filePath, file]) => ({
-    path: filePath,
-    sha: file.sha,
-    size: file.body ? Buffer.byteLength(file.body, 'utf8') : 0,
-  }))
+function cachedFileList(files: Record<string, CachedFile>, cfg: RemoteRepo): SkillFileRef[] {
+  return Object.entries(files)
+    // 缓存里存的是「当初按当时规则筛过的结果」。
+    // 若只信任缓存，改了筛选规则也不生效 —— 规则变更会被静默忽略。
+    // 所以每次取出缓存都重新过一遍 isSkillFile，
+    // 让实时拉取 / 缓存命中 / 限流降级三条路径的过滤语义保持一致。
+    .filter(([filePath]) => isSkillFile(filePath, cfg))
+    .map(([filePath, file]) => ({
+      path: filePath,
+      sha: file.sha,
+      size: file.body ? Buffer.byteLength(file.body, 'utf8') : 0,
+    }))
 }
 
 /** 以固定并发度执行异步任务（按下标写入结果，保持顺序稳定） */
