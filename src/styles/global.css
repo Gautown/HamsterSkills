@@ -218,6 +218,30 @@ h2 {
   object-fit: contain;
 }
 
+/*
+ * 窄屏下品牌为导航让位。
+ *
+ * 1.5rem（24px）的品牌在 320px 屏幕上放不下：
+ * 品牌块 197px + 导航 122px + 间距 24px = 343px，而可用只有 305px，
+ * 实测横向溢出 54px。
+ *
+ *   ≤640px  字号降到 1.25rem（20px），缓解拥挤
+ *   ≤420px  只留 logo，隐藏文字
+ *
+ * 隐藏文字不影响无障碍：logo 的 alt 就是站名，读屏仍能拿到品牌名。
+ */
+@media (max-width: 640px) {
+  .brand {
+    font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .brand span {
+    display: none;
+  }
+}
+
 .site-header nav {
   display: flex;
   gap: 4px;
@@ -640,7 +664,18 @@ h2 {
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
-#nav-search-input {
+/*
+ * 输入框样式挂在**类**上，不是 id。
+ *
+ * 原因是汉堡面板里那个输入框没有 `id="nav-search-input"`（id 要唯一），
+ * 而原来的规则全是 `#nav-search-input` —— 于是面板里那个只继承了
+ * 浏览器默认样式：flex 为 `0 1 auto`（不伸展，179px 宽却空着 336px）、
+ * `2px inset` 默认灰边、不透明白底（深色模式下是个白框）。
+ * 改挂类名后两个输入框共用同一套样式，不会再漏。
+ *
+ * 桌面那个仍保留 id：Header 的脚本用 getElementById 取它。
+ */
+.nav-search-input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -658,18 +693,18 @@ h2 {
   color: var(--foreground);
 }
 
-#nav-search-input:focus-visible {
+.nav-search-input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
   border-radius: var(--radius-sm);
 }
 
-#nav-search-input::placeholder {
+.nav-search-input::placeholder {
   color: var(--muted);
 }
 
 /* 隐藏浏览器自带的清除按钮，避免与自定义样式冲突 */
-#nav-search-input::-webkit-search-cancel-button {
+.nav-search-input::-webkit-search-cancel-button {
   -webkit-appearance: none;
   appearance: none;
 }
@@ -2362,7 +2397,7 @@ h2 {
     max-width: 560px;
   }
 
-  #nav-search-input {
+  .nav-search-input {
     font-size: 12.5px;
     padding: 6px 10px;
   }

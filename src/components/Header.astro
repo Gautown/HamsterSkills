@@ -96,6 +96,7 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
     */}
     <form class="nav-search" id="nav-search" role="search" action={searchPath} method="get">
       <input
+        class="nav-search-input"
         id="nav-search-input"
         type="search"
         name="search"
@@ -209,6 +210,7 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
       {/* 窄屏下导航栏搜索框隐藏，改由这里提供 */}
       <form class="nav-search nav-search-mobile" id="nav-search-mobile" role="search" action={searchPath} method="get">
         <input
+          class="nav-search-input"
           type="search"
           name="search"
           value={currentQuery}
