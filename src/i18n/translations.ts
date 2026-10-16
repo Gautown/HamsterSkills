@@ -2,7 +2,7 @@ export type Locale = 'zh' | 'en'
 
 export const T = {
   zh: {
-    siteName: '仓鼠技能库',
+    siteName: '仓鼠AI技能库',
     siteDesc: '按用途分类的 AI Skill 仓库，复制即用。',
     notFoundTitle: '页面不存在',
     notFoundDesc: '这个技能还没被收录，或者链接有误。',
@@ -114,7 +114,7 @@ export const T = {
     promptNote: '将 {{变量}} 替换为实际内容后即可使用。',
   },
   en: {
-    siteName: 'Hamster Skills',
+    siteName: 'Hamster AI Skills',
     siteDesc: 'A curated AI skill library organized by use case. Copy & go.',
     notFoundTitle: 'Page not found',
     notFoundDesc: 'This skill may not be indexed yet, or the link is broken.',

@@ -201,7 +201,12 @@ h2 {
   gap: 8px;
   text-decoration: none;
   font-weight: 600;
-  font-size: 15px;
+  /*
+   * 1.5rem（=24px）。根字号未被覆盖，所以就是 24px。
+   * 页头定高 60px，24px 文字的行盒约 36px，放得下。
+   * 加粗是为了让放大的品牌名仍与 logo 的视觉重量相称。
+   */
+  font-size: 1.5rem;
   letter-spacing: -0.01em;
   flex-shrink: 0;
 }
@@ -406,8 +411,16 @@ h2 {
   gap: 2px;
 }
 
-/* 窄屏面板里的搜索框：占满整行，最大宽度限制取消 */
-.nav-search-mobile {
+/*
+ * 窄屏面板里的搜索框：占满整行，取消最大宽度限制。
+ *
+ * 必须写成 `.nav-search.nav-search-mobile`（特异性 0,2,0）而不是单个类名：
+ * 元素同时带着 `nav-search` 与 `nav-search-mobile` 两个类，
+ * 而 `.nav-search { max-width: 560px }` 定义在文件**更靠后**的位置，
+ * 同特异性下后者胜出 —— 原来写成 `.nav-search-mobile { max-width: none }`，
+ * 这条声明被静默推翻，面板宽 753px 时搜索框只有 560px，没有占满。
+ */
+.nav-search.nav-search-mobile {
   max-width: none;
   margin-bottom: 8px;
 }
@@ -2335,14 +2348,18 @@ h2 {
 }
 
 /*
- * 901~1210px：汉堡还没出现（≤900px 才出现），但导航栏宽度已不足以
- * 容纳完整搜索框。这段规则保证搜索框仍然可用——压缩而非移除。
- * 上限随容器放宽到 560px 后，压缩区间可从 240px 提到 280px。
+ * 901~1210px：汉堡还没出现（≤900px 才出现），导航栏放得下搜索框。
+ *
+ * 上限从 280px 提到 560px，与 PC 区间一致。
+ * 280px 只有 PC 上限的一半，而这段区间**是有空余的**：
+ * 页头里 .brand 与 nav 都是 flex-shrink: 0，只有搜索框可伸缩
+ * （flex: 1 1 auto + min-width: 0），所以它会自动吃掉空余空间；
+ * 真放不下时会继续收缩，不会挤坏品牌与导航。
  */
 @media (min-width: 901px) and (max-width: 1210px) {
   .header-inner > .nav-search {
     display: flex;
-    max-width: 280px;
+    max-width: 560px;
   }
 
   #nav-search-input {
