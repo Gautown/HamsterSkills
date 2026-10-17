@@ -1,16 +1,24 @@
 /**
- * 生成装饰性图片的 WebP 版本。
+ * 生成 hero 背景图的 WebP + PNG 两版。
  *
- * 为什么需要：
- *   banner.png 是首页 hero 的背景图，每个访客都要下载。
- *   原始 PNG 254 KB，转 WebP 后 43 KB，省 83%。
- *   它是纯装饰（pointer-events:none、z-index:-1，
- *   深色模式还会被压到 60% 不透明度并降亮度），
- *   所以有损压缩的瑕疵在这张图上不可见。
+ * 源图与产物的关系：
+ *   源图  assets-src/banner2.png  3840x1120、1.4 MB，不部署
+ *   产物  public/hero.webp        1920x560、125 KB  现代浏览器
+ *         public/hero.png         1920x560、116 KB  不支持 WebP 时回退
  *
- * 为什么做成脚本而不是直接提交产物：
- *   生成的 banner.webp 是派生文件。留一个脚本说明它怎么来的，
- *   换图后重跑一次即可，不至于出现「webp 和 png 不同源」的漂移。
+ * 为什么源图不放 public/：
+ *   public/ 会被 Astro 复制进 dist、每次部署上传 Cloudflare。
+ *   1.4 MB 的原图只在生成时用一次，不该跟着每次部署一起传。
+ *
+ * 为什么固定缩到 1920 宽：
+ *   背景图用 background-size: contain 居中显示，
+ *   实际呈现宽度不会超过视口。1920 已覆盖到 2K 屏；
+ *   再往上只是放大插值，白白多花字节。
+ *
+ * 为什么 PNG 回退要用 palette：
+ *   同尺寸普通 PNG 是 381 KB，量化成 256 色调色板后只要 116 KB。
+ *   这张图是纯装饰（pointer-events:none、z-index:-1，
+ *   深色模式还会被压到 60% 不透明度并降亮度），色深差异看不出来。
  *
  * 用法：node scripts/optimize-assets.mjs
  */
@@ -20,27 +28,45 @@ import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const PUBLIC = path.join(ROOT, 'public')
+const SRC_DIR = path.join(ROOT, 'assets-src')
+const OUT_DIR = path.join(ROOT, 'public')
 
-/** 待转换的装饰性图片与 WebP 质量。
- *  数值越高越清晰、体积越大；这些图都不承载文字信息，82 足够。 */
-const TARGETS = [{ png: 'banner.png', webp: 'banner.webp', quality: 82 }]
+/** 源图 -> 产物。宽度固定，见文件头说明。 */
+const TARGETS = [
+  {
+    source: 'banner2.png',
+    width: 1920,
+    outputs: [
+      { name: 'hero.webp', format: 'webp', options: { quality: 82 } },
+      { name: 'hero.png', format: 'png', options: { compressionLevel: 9, quality: 82, palette: true } },
+    ],
+  },
+]
 
-for (const { png, webp, quality } of TARGETS) {
-  const src = path.join(PUBLIC, png)
+const kb = n => `${(n / 1024).toFixed(0)} KB`.padStart(8)
+
+for (const { source, width, outputs } of TARGETS) {
+  const src = path.join(SRC_DIR, source)
   if (!fs.existsSync(src)) {
-    console.log(`  跳过 ${png}（文件不存在）`)
+    console.error(`  缺少源图 ${path.relative(ROOT, src)}，跳过`)
+    process.exitCode = 1
     continue
   }
-  const before = fs.statSync(src).size
-  const buf = await sharp(src).webp({ quality }).toBuffer()
-  const out = path.join(PUBLIC, webp)
-  fs.writeFileSync(out, buf)
+  const srcBytes = fs.statSync(src).size
+  const srcMeta = await sharp(src).metadata()
+  console.log(`  源图 ${source}  ${srcMeta.width}x${srcMeta.height}  ${kb(srcBytes)}`)
 
-  const meta = await sharp(src).metadata()
-  console.log(
-    `  ${png} (${meta.width}x${meta.height})  ${(before / 1024).toFixed(0)} KB` +
-      `  ->  ${webp}  ${(buf.length / 1024).toFixed(0)} KB` +
-      `  (省 ${(100 - (buf.length / before) * 100).toFixed(0)}%)`,
-  )
+  for (const out of outputs) {
+    const pipeline = sharp(src).resize({ width })
+    const buf =
+      out.format === 'webp'
+        ? await pipeline.webp(out.options).toBuffer()
+        : await pipeline.png(out.options).toBuffer()
+    fs.writeFileSync(path.join(OUT_DIR, out.name), buf)
+    const m = await sharp(buf).metadata()
+    console.log(
+      `    -> ${out.name.padEnd(11)} ${m.width}x${m.height}  ${kb(buf.length)}` +
+        `   省 ${(100 - (buf.length / srcBytes) * 100).toFixed(0)}%`,
+    )
+  }
 }

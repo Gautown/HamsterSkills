@@ -523,14 +523,18 @@ h2 {
   inset: 0;
   z-index: -1;
   /*
-     * image-set：优先取 WebP（43 KB），不支持的浏览器回退 PNG（248 KB）。
+     * image-set：优先取 WebP（125 KB），不支持的浏览器回退 PNG（116 KB）。
+     *
+     * 源图是 assets-src/banner2.png（3840x1120，1.4 MB），缩到 1920 宽生成两版。
+     * 源图放在 assets-src/ 而不是 public/：public/ 每次部署都会上传 Cloudflare，
+     * 而 1.4 MB 的原图只在生成时用一次。
+     *
      * 这张图是纯装饰背景，深色模式下还会被压到 60% 不透明度并降亮度，
-     * 所以 WebP 的有损瑕疵在这张图上不可见，省下的 205 KB 却人人受益。
-     * 由 scripts/optimize-assets.mjs 生成，换图后重跑一次即可。
+     * 所以 WebP 的有损瑕疵不可见。改图后重跑 node scripts/optimize-assets.mjs。
      */
     background-image: image-set(
-      url('/banner.webp') type('image/webp'),
-      url('/banner.png') type('image/png')
+      url('/hero.webp') type('image/webp'),
+      url('/hero.png') type('image/png')
     );
   background-position: center center;
   background-size: contain;
