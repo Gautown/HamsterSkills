@@ -53,5 +53,31 @@ export function isSkillFile(filePath: string, cfg: SkillFileRule): boolean {
     if (!normalized.startsWith(`${prefix}/`)) return false
     relative = normalized.slice(prefix.length + 1)
   }
-  return !(cfg.skip ?? []).some(skip => relative === skip || relative.startsWith(`${skip}/`))
+  return !skipped(relative, cfg.skip)
+}
+
+/**
+ * 判断相对路径是否落在 skip 名单里。名单支持两种写法：
+ *
+ *   'templates'  单个目录名 —— 匹配**任意层级**的同名目录段
+ *   'a/b'        含斜杠的路径 —— 仍按完整前缀匹配
+ *
+ * 为什么要按段匹配：
+ *   原来是纯前缀匹配，只有位于仓库根部的 templates/ 才挡得住，
+ *   嵌在子目录里的漏了进来。用真实缓存量过：
+ *   127 个仓库 5527 个 skill 文件中，243 个（4.40%）位于任意层级的
+ *   skip 名单目录内，集中在 5 个仓库，样本形如
+ *   tools/cc-sdd/templates/agents/antigravity-skills/skills/kiro-debug/SKILL.md
+ *   —— 模板副本被当成正式 skill 收了进来。
+ *
+ *   按段匹配后这 243 条会被剔除，且反向差异为 0（不会因此多收任何文件）。
+ *
+ * 之所以保留「含斜杠按前缀」这一路：skip 原本的注释就写明支持
+ * 「目录名或相对路径前缀」两种写法，a/b 这种用法仍然有效。
+ */
+export function skipped(relative: string, skip?: string[]): boolean {
+  return (skip ?? []).some(entry => {
+    if (entry.includes('/')) return relative === entry || relative.startsWith(`${entry}/`)
+    return relative.split('/').includes(entry)
+  })
 }

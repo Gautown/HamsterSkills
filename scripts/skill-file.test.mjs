@@ -75,29 +75,29 @@ test('cfg.skip 跳过目录：命中路径根部', () => {
   assert.equal(isSkillFile('dist/SKILL.md', { skip: DEFAULT_SKIP }), false)
 })
 
-test('cfg.skip 是前缀匹配，不是子串匹配', () => {
-  // mytemplate 不该被 templates 规则误伤
+test('cfg.skip 是路径段精确匹配，不是子串匹配', () => {
+  // mytemplate 不该被 templates 规则误伤；redistribute 不该被 dist 误伤
   assert.equal(isSkillFile('mytemplate/SKILL.md', { skip: DEFAULT_SKIP }), true)
   assert.equal(isSkillFile('redistribute/SKILL.md', { skip: DEFAULT_SKIP }), true)
+  assert.equal(isSkillFile('templates2/SKILL.md', { skip: DEFAULT_SKIP }), true)
+  // 段要完整相等，distributed 不是 dist
+  assert.equal(isSkillFile('a/distributed/SKILL.md', { skip: DEFAULT_SKIP }), true)
 })
 
-test('cfg.skip 只在路径根部生效（当前已知语义，非笔误）', () => {
-  // 实测：默认名单里有 templates/node_modules/dist/build，
-  // 但只挡住位于仓库根部的同名目录；嵌在子目录里的同名目录会漏进来。
-  //
-  // 用真实缓存量过：127 个仓库 5527 个 skill 文件中，
-  // 243 个（4.40%）位于任意层级的 skip 名单目录内，集中在 5 个仓库，
+test('cfg.skip 按路径段匹配：嵌在子目录里的同名目录也会被跳过', () => {
+  // 原来只有位于仓库根部的 templates/ 挡得住，子目录里的漏了进来。
+  // 用真实缓存量过：5527 个 skill 文件里 243 个（4.40%）
+  // 位于任意层级的 skip 名单目录内，集中在 5 个仓库，
   // 样本形如 tools/cc-sdd/templates/agents/.../skills/kiro-debug/SKILL.md
-  // —— 模板副本被当成正式 skill 收了进来。
-  //
-  // 这里锁死现状，便于将来决定是否改成逐段匹配时看清差异。
-  assert.equal(isSkillFile('skills/templates/pdf/SKILL.md', { skip: DEFAULT_SKIP }), true)
-  assert.equal(isSkillFile('tools/x/node_modules/y/SKILL.md', { skip: DEFAULT_SKIP }), true)
+  assert.equal(isSkillFile('skills/templates/pdf/SKILL.md', { skip: DEFAULT_SKIP }), false)
+  assert.equal(isSkillFile('tools/x/node_modules/y/SKILL.md', { skip: DEFAULT_SKIP }), false)
+  assert.equal(isSkillFile('a/b/dist/SKILL.md', { skip: DEFAULT_SKIP }), false)
+  assert.equal(isSkillFile('deep/nested/.github/SKILL.md', { skip: DEFAULT_SKIP }), false)
 })
 
-test('cfg.skip 在配置了 path 后作用于「前缀之内」的相对路径', () => {
-  // path='skills' 时 relative 变成 templates/pdf/SKILL.md，于是能挡住。
-  // 同一份数据配不配 path，skip 命中结果不同 —— 这是上面那条的成因。
+test('cfg.skip 在配置了 path 后同样作用于「前缀之内」的相对路径', () => {
+  // path='skills' 时 relative 变成 templates/pdf/SKILL.md。
+  // 改按段匹配后，不再依赖配没配 path —— 两种配置结果一致。
   assert.equal(
     isSkillFile('skills/templates/pdf/SKILL.md', { path: 'skills', skip: DEFAULT_SKIP }),
     false,
@@ -106,9 +106,24 @@ test('cfg.skip 在配置了 path 后作用于「前缀之内」的相对路径',
   assert.equal(isSkillFile('skills/pdf/SKILL.md', { path: 'skills', skip: DEFAULT_SKIP }), true)
 })
 
-test('skip 支持目录名与完整相对路径前缀两种写法', () => {
-  assert.equal(isSkillFile('a/b/c/SKILL.md', { skip: ['a/b'] }), false)
+test('skip 支持目录名（按段）与完整相对路径前缀（按前缀）两种写法', () => {
+  // 目录名 -> 任意层级都挡
+  assert.equal(isSkillFile('a/b/c/SKILL.md', { skip: ['c'] }), false)
+  assert.equal(isSkillFile('c/SKILL.md', { skip: ['c'] }), false)
+  // 含斜杠 -> 完整前缀，必须出现在开头
+  assert.equal(isSkillFile('a/b/SKILL.md', { skip: ['a/b'] }), false)
   assert.equal(isSkillFile('a/bc/SKILL.md', { skip: ['a/b'] }), true)
+  // 含斜杠的条目不按段匹配：x/a/b 不该被 a/b 命中
+  assert.equal(isSkillFile('x/a/b/SKILL.md', { skip: ['a/b'] }), true)
+})
+
+test('改按段匹配后，配不配 path 的结果一致', () => {
+  // 这是本次改动的核心保证：skip 的命中不再随 path 配置而变。
+  // 旧逻辑下 skills/templates/pdf/SKILL.md 配 path 时被挡、不配时漏过。
+  const withPath = isSkillFile('skills/templates/pdf/SKILL.md', { path: 'skills', skip: DEFAULT_SKIP })
+  const without = isSkillFile('skills/templates/pdf/SKILL.md', { skip: DEFAULT_SKIP })
+  assert.equal(withPath, without)
+  assert.equal(without, false)
 })
 
 test('skip 为空或缺失时不过滤', () => {
