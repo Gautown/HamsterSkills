@@ -7,6 +7,7 @@ import { classifySkill } from '../lib/classify.mjs'
 import { AI_CACHE_FILE, SKILL_MANIFEST_FILE, loadAiCache, lookupAiCategory } from '../lib/ai-cache.mjs'
 import type { AiCacheFile } from '../lib/ai-cache.mjs'
 import { deriveSkillId, skillDirectory } from '../lib/skill-id.mjs'
+import { isSkillFile } from '../lib/skill-file'
 import { judgeMetadata, judgeProbe, estimateTokens, toJsonLine, type RepoMeta, type RepoProbe, type Verdict, type QualityGate } from '../lib/triage'
 
 /* ------------------------------ 公共类型 ------------------------------ */
@@ -235,7 +236,6 @@ const DISCOVERY_CACHE_FILE = '_discovery.json'
 /** 判定日志（JSON Lines），与语料缓存同目录 */
 const TRIAGE_LOG_FILE = '_triage.jsonl'
 const DEFAULT_SKIP = ['template', 'templates', '.github', 'node_modules', 'dist', 'build']
-const SKILL_FILENAME = 'skill.md'
 const FETCH_TIMEOUT_MS = 30_000
 const FILE_FETCH_CONCURRENCY = 8
 /** raw 文件拉取的重试次数（CDN 偶发 429/5xx 时自动重试） */
@@ -1077,20 +1077,7 @@ function pickCategory(frontmatter: Record<string, unknown>, ctx: SkillContext): 
 
 /* ------------------------------ 工具函数 ------------------------------ */
 
-function isSkillFile(filePath: string, cfg: RemoteRepo): boolean {
-  const normalized = filePath.replace(/\\/g, '/')
-  const lower = normalized.toLowerCase()
-  if (lower !== SKILL_FILENAME && !lower.endsWith(`/${SKILL_FILENAME}`)) return false
-
-  let relative = normalized
-  const prefix = cfg.path?.replace(/^\/+|\/+$/g, '')
-  if (prefix) {
-    if (!normalized.startsWith(`${prefix}/`)) return false
-    relative = normalized.slice(prefix.length + 1)
-  }
-  return !(cfg.skip ?? []).some(skip => relative === skip || relative.startsWith(`${skip}/`))
-}
-
+// isSkillFile 已移至 src/lib/skill-file.ts（纯函数，可单元测试）
 // skillDirectory / slugify 已移至 src/lib/skill-id.mjs（与离线 AI 分类脚本共用）
 
 function titleCase(value: string): string {

@@ -3,7 +3,7 @@
  * - 静态资产由 assets binding 直接服务（run_worker_first 只放行 /api/*）
  * - Cron Trigger：每日触发 GitHub Actions 的 refresh 工作流（同步 GitHub → 构建 → 部署）
  * - POST /api/refresh：手动触发（需 Bearer REFRESH_SECRET，带频率限制）
- * - GET  /api/refresh-status：查询最近一次刷新工作流状态
+ * - GET  /api/refresh-status：查询最近一次刷新工作流状态（需 Bearer REFRESH_SECRET）
  * - POST /api/chat：站内聊天窗的后端代理（见 chat.ts）
  *
  * 所需 Secrets（wrangler secret put）：
@@ -16,6 +16,7 @@
  */
 import { handleChat } from './chat'
 import type { KvNamespace } from './chat'
+import { authorized } from './refresh-auth'
 
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> }
@@ -99,19 +100,7 @@ async function refreshStatus(env: Env): Promise<Response> {
     : json({ runs: 0 })
 }
 
-/** 常量时间比较，避免通过响应耗时侧信道逐字节猜测密钥 */
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
-}
-
-function authorized(request: Request, env: Env): boolean {
-  const secret = env.REFRESH_SECRET
-  if (!secret) return false
-  return safeEqual(request.headers.get('Authorization') ?? '', `Bearer ${secret}`)
-}
+// safeEqual / authorized 已移至 src/worker/refresh-auth.ts（纯模块，可单元测试）
 
 /** best-effort 频率限制：同一 IP 在窗口内只放行一次 */
 function rateLimited(request: Request): boolean {
@@ -133,7 +122,14 @@ export default {
       if (rateLimited(request)) return json({ error: '请求过于频繁，请 60 秒后重试' }, 429)
       return dispatchRefresh(env, 'manual')
     }
-    if (pathname === '/api/refresh-status') return refreshStatus(env)
+    if (pathname === '/api/refresh-status') {
+      // 同样要求鉴权：它会泄露刷新节奏（运行时间/结论），
+      // 且是一个无鉴权的 GitHub API 代理，能消耗 Worker 令牌的额度。
+      // 全站没有任何前端调用这个端点，所以收紧不会影响访客。
+      if (request.method !== 'GET') return json({ error: '仅支持 GET' }, 405)
+      if (!authorized(request, env)) return json({ error: '未授权' }, 401)
+      return refreshStatus(env)
+    }
     if (pathname === '/api/chat') return handleChat(request, env)
     return env.ASSETS.fetch(request)
   },
