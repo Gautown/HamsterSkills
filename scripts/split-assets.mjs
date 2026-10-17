@@ -16,11 +16,23 @@ const LIMIT = Number(process.env.STATIC_ASSET_LIMIT ?? 20000)
  * 两站共用的静态资源。
  * - _headers：Cloudflare 静态资产的响应头规则（安全头 / 缓存策略）
  * - logo.svg：英文页同样引用 /logo.svg，dist-en 必须自包含
- * - banner.png：hero 背景图，英文首页 /en/ 也用同一张
+ * - hero.webp / hero.png：hero 背景图，英文首页 /en/ 也用同一张
+ *   （源图在 assets-src/banner2.png，由 scripts/optimize-assets.mjs 生成；
+ *   旧的 banner.png 已下线，不再需要）
  * - og.png：og:image 指向它，两站都要有（原先列的 og.svg 那个文件根本不存在，
  *   线上实测 404，社交分享从来没出过图）
  */
-const SHARED = ['_astro', '_headers', 'favicon.svg', 'logo.svg', 'og.png', 'banner.png', 'robots.txt', '404.html']
+const SHARED = [
+  '_astro',
+  '_headers',
+  'favicon.svg',
+  'logo.svg',
+  'og.png',
+  'hero.webp',
+  'hero.png',
+  'robots.txt',
+  '404.html',
+]
 
 if (!fs.existsSync(DIST)) {
   console.error('✗ 未找到 dist/，请先运行 npm run build')
