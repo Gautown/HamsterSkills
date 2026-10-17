@@ -20,6 +20,20 @@
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable
 
+# 装饰性静态资源：文件名没有内容哈希，不能 immutable（换图后要能生效），
+# 但也不该每次访问都回源做条件请求。
+# 这几个文件每个页面都要用到（logo 在页头、favicon 由浏览器自动请求、
+# banner 是首页 hero 背景），原来走的是 max-age=0,must-revalidate，
+# 等于每页两次额外往返。给 1 小时强缓存，重复访问零请求，换图最迟 1 小时生效。
+/logo.svg
+  Cache-Control: public, max-age=3600
+/favicon.svg
+  Cache-Control: public, max-age=3600
+/banner.webp
+  Cache-Control: public, max-age=3600
+/banner.png
+  Cache-Control: public, max-age=3600
+
 # 数据文件每次同步都会变，只允许短时缓存
 /skills-index.json
   Cache-Control: public, max-age=0, must-revalidate

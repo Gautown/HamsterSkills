@@ -522,7 +522,16 @@ h2 {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: url('/banner.png');
+  /*
+     * image-set：优先取 WebP（43 KB），不支持的浏览器回退 PNG（248 KB）。
+     * 这张图是纯装饰背景，深色模式下还会被压到 60% 不透明度并降亮度，
+     * 所以 WebP 的有损瑕疵在这张图上不可见，省下的 205 KB 却人人受益。
+     * 由 scripts/optimize-assets.mjs 生成，换图后重跑一次即可。
+     */
+    background-image: image-set(
+      url('/banner.webp') type('image/webp'),
+      url('/banner.png') type('image/png')
+    );
   background-position: center center;
   background-size: contain;
   background-repeat: no-repeat;
