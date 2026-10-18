@@ -31,6 +31,8 @@
   Cache-Control: public, max-age=3600
 /hero.png
   Cache-Control: public, max-age=3600
+/mascot.png
+  Cache-Control: public, max-age=3600
 
 # 数据文件每次同步都会变，只允许短时缓存
 /skills-index.json

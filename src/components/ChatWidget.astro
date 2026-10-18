@@ -95,9 +95,12 @@ const strings = {
   </div>
 
   <button class="chat-launcher" type="button" id="chat-launcher" aria-label={strings.open} aria-expanded="false">
-    <svg class="chat-icon-open" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M21 11.5a8.5 8.5 0 01-8.5 8.5c-1.2 0-2.4-.25-3.5-.7L4 21l1.7-4.6A8.5 8.5 0 1121 11.5z" />
-    </svg>
+    {/*
+      吉祥物替代原来的聊天气泡图标。
+      128×145 无损小版本（源图 assets-src/Mascot.png 1264×1427 2.4 MB，不部署）。
+      alt 留空：装饰性内容，按钮本身已有 aria-label。
+      */}
+    <img class="chat-icon-open" src="/mascot.png" alt="" width="128" height="145" aria-hidden="true" />
     <svg class="chat-icon-close" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M6 6l12 12M18 6L6 18" />
     </svg>
@@ -182,6 +185,13 @@ const strings = {
     stroke-width: 1.7;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+
+  /* 吉祥物图（开状态）：22×22 显示盒与关闭 X 一致，竖图在盒内等比缩放留白 */
+  .chat-launcher img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
   }
 
   /* 两个图标交叉淡入淡出，展开/收起时不用换 DOM */

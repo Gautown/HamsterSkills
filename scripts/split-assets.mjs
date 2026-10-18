@@ -17,6 +17,8 @@ const LIMIT = Number(process.env.STATIC_ASSET_LIMIT ?? 20000)
  * - _headers：Cloudflare 静态资产的响应头规则（安全头 / 缓存策略）
  * - logo.svg：英文页同样引用 /logo.svg，dist-en 必须自包含
  * - hero.png：hero 背景图（883×124 手工优化资产），英文首页 /en/ 也用同一张
+ * - mascot.png：聊天按钮的吉祥物（128px 小版本，源图 assets-src/Mascot.png），
+ *   聊天窗是全局组件，两站每页都渲染，dist-en 根目录也要有
  */
 const SHARED = [
   '_astro',
@@ -24,6 +26,7 @@ const SHARED = [
   'favicon.svg',
   'logo.svg',
   'hero.png',
+  'mascot.png',
   'robots.txt',
   '404.html',
 ]
