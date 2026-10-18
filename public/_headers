@@ -29,8 +29,6 @@
   Cache-Control: public, max-age=3600
 /favicon.svg
   Cache-Control: public, max-age=3600
-/hero.webp
-  Cache-Control: public, max-age=3600
 /hero.png
   Cache-Control: public, max-age=3600
 

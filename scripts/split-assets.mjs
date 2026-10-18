@@ -16,18 +16,13 @@ const LIMIT = Number(process.env.STATIC_ASSET_LIMIT ?? 20000)
  * 两站共用的静态资源。
  * - _headers：Cloudflare 静态资产的响应头规则（安全头 / 缓存策略）
  * - logo.svg：英文页同样引用 /logo.svg，dist-en 必须自包含
- * - hero.webp / hero.png：hero 背景图，英文首页 /en/ 也用同一张
- *   （源图在 assets-src/banner2.png，由 scripts/optimize-assets.mjs 生成）
- * - og.png：og:image 指向它，两站都要有（原先列的 og.svg 那个文件根本不存在，
- *   线上实测 404，社交分享从来没出过图）
+ * - hero.png：hero 背景图（883×124 手工优化资产），英文首页 /en/ 也用同一张
  */
 const SHARED = [
   '_astro',
   '_headers',
   'favicon.svg',
   'logo.svg',
-  'og.png',
-  'hero.webp',
   'hero.png',
   'robots.txt',
   '404.html',
@@ -53,7 +48,7 @@ fs.rmSync(EN, { recursive: true, force: true })
 const missingShared = SHARED.filter((f) => !fs.existsSync(path.join(DIST, f)))
 if (missingShared.length) {
   console.error(`✗ SHARED 里的以下资源在 dist/ 中不存在：${missingShared.join(', ')}`)
-  console.error('  检查 public/ 下是否真的生成了这些文件（例如 og.png 需运行 npm run og-image）')
+  console.error('  检查 public/ 下是否真的存在这些文件')
   process.exit(1)
 }
 

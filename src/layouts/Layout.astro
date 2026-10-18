@@ -57,13 +57,9 @@ const canonical = new URL(pathname, SITE_ORIGIN).href
 const pageTitle = title ? `${title} · ${t.siteName}` : t.siteName
 const pageDesc = description ?? t.siteDesc
 /*
- * OG 图必须是 PNG：Twitter / Facebook / Slack / LinkedIn 的图片抓取器
- * 普遍不支持 SVG（各家爬虫的已知限制，与浏览器能否显示无关），
- * 而 og:image 恰恰只会被这些爬虫消费。此前这里指向 /og.svg，
- * 而那个文件根本不存在 —— 线上实测 404，社交分享从来没出过图。
- * 改由 scripts/make-og-image.mjs 生成 public/og.png。
+ * 社交分享图（og.png）已下线：og:image / twitter:image 标签连同
+ * 生成脚本 scripts/make-og-image.mjs 一并删除，社交平台分享为纯文字卡片。
  */
-const ogImage = new URL('/og.png', SITE_ORIGIN).href
 /** hreflang 必须是绝对 URL */
 const alternateHref = alternate ? new URL(alternate.href, SITE_ORIGIN).href : null
 ---
@@ -105,18 +101,11 @@ const alternateHref = alternate ? new URL(alternate.href, SITE_ORIGIN).href : nu
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDesc} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={ogImage} />
-    {/* 图片本身没有信息量，但 alt 是无障碍与部分平台的可读性要求 */}
-    <meta property="og:image:alt" content={`${t.siteName} — ${t.siteDesc}`} />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
     <meta property="og:locale" content={lang === 'zh' ? 'zh_CN' : 'en_US'} />
 
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={pageDesc} />
-    <meta name="twitter:image" content={ogImage} />
-    <meta name="twitter:image:alt" content={`${t.siteName} — ${t.siteDesc}`} />
 
     <title>{pageTitle}</title>
   </head>

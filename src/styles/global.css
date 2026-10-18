@@ -499,7 +499,7 @@ h2 {
 /*
  * hero 背景：一道居中的波浪装饰。
  *
- * 图片是 2880×832（宽高比 3.46）的透明 PNG，四角 alpha 为 0，
+ * 图片是 883×124（宽高比 7.12）的透明 PNG，四角 alpha 为 0，
  * 直接当背景用不会出现白底方块。
  *
  * 用 ::before 而不是直接 background-image：
@@ -523,19 +523,14 @@ h2 {
   inset: 0;
   z-index: -1;
   /*
-     * image-set：优先取 WebP（125 KB），不支持的浏览器回退 PNG（116 KB）。
+     * 单图背景：/hero.png（883×124，18.6 KB，带 alpha）。
+     * 此前由 assets-src/banner2.png 缩放生成 hero.webp/hero.png 两版并用 image-set 兜底，
+     * 整条生成管线（源图 + optimize-assets 脚本）已退役，
+     * 现在这张 public/ 里的手工优化资产就是最终图，直接引用。
      *
-     * 源图是 assets-src/banner2.png（3840x1120，1.4 MB），缩到 1920 宽生成两版。
-     * 源图放在 assets-src/ 而不是 public/：public/ 每次部署都会上传 Cloudflare，
-     * 而 1.4 MB 的原图只在生成时用一次。
-     *
-     * 这张图是纯装饰背景，深色模式下还会被压到 60% 不透明度并降亮度，
-     * 所以 WebP 的有损瑕疵不可见。改图后重跑 node scripts/optimize-assets.mjs。
+     * 这张图是纯装饰背景，深色模式下还会被压到 60% 不透明度并降亮度。
      */
-    background-image: image-set(
-      url('/hero.webp') type('image/webp'),
-      url('/hero.png') type('image/png')
-    );
+    background-image: url('/hero.png');
   background-position: center center;
   background-size: contain;
   background-repeat: no-repeat;
