@@ -142,19 +142,26 @@ const strings = {
       所以可用高度要减掉这三项，漏算任何一项面板就会顶出视口顶端
       （曾漏算按钮，1080px 视口下面板顶端跑到 -38px）。
     */
-    --launcher-size: 46px;
+    --launcher-size: 72px;
     --panel-gap: 12px;
   }
 
   /* ---------- 悬浮按钮 ---------- */
 
   .chat-launcher {
-    width: var(--launcher-size, 46px);
-    height: var(--launcher-size, 46px);
+    width: var(--launcher-size, 72px);
+    height: var(--launcher-size, 72px);
     /* 外边距交给 .chat-dock 统一管，这里保持 0 */
     margin: 0;
+    /* 浏览器给 <button> 的 UA 默认 padding（约 1px 6px）必须清零，
+       否则满幅吉祥物会被 12px 横向内边距挤偏并越出按钮 */
+    padding: 0;
     border: 1px solid var(--line);
     border-radius: 50%;
+    /* 吉祥物 64px 满幅显示时，机甲肩部等不透明内容可能越出圆弧。
+       overflow:hidden + border-radius:50% 会把内容裁进圆形按钮，
+       形成头像式裁切，保证圆钮轮廓永远干净。对 34px 的关闭 X 无影响。 */
+    overflow: hidden;
     background: var(--surface);
     color: var(--text);
     cursor: pointer;
@@ -178,8 +185,8 @@ const strings = {
   }
 
   .chat-launcher svg {
-    width: 22px;
-    height: 22px;
+    width: 34px;
+    height: 34px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.7;
@@ -187,10 +194,12 @@ const strings = {
     stroke-linejoin: round;
   }
 
-  /* 吉祥物图（开状态）：22×22 显示盒与关闭 X 一致，竖图在盒内等比缩放留白 */
+  /* 吉祥物图（开状态）：64px 显示盒几乎满幅 72px 圆钮，竖图在盒内等比缩放
+     （实际渲染 56x64），越出圆弧的部分由 .chat-launcher 的 overflow 裁掉。
+     128px 源图对 64px 显示仍有 2 倍余量，Retina 下不糊。 */
   .chat-launcher img {
-    width: 24px;
-    height: 24px;
+    width: 64px;
+    height: 64px;
     object-fit: contain;
   }
 
@@ -222,7 +231,7 @@ const strings = {
       减去的三项分别是：dock 离底、按钮高度、按钮上方的间距。
     */
     max-height: calc(
-      100vh - var(--dock-inset, 20px) - var(--launcher-size, 46px) - var(--panel-gap, 12px)
+      100vh - var(--dock-inset, 20px) - var(--launcher-size, 72px) - var(--panel-gap, 12px)
     );
     border: 1px solid var(--line);
     border-radius: var(--radius);
