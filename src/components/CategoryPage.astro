@@ -3,6 +3,7 @@ import type { CollectionEntry } from 'astro:content'
 import SkillCard from './SkillCard.astro'
 import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
 import { T, type Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
 
 interface Props {
   locale: Locale
@@ -12,7 +13,7 @@ interface Props {
 
 const { locale, category, skills } = Astro.props
 const t = T[locale]
-const base = locale === 'en' ? '/en' : ''
+const base = baseOf(locale)
 const list = skills.filter(s => s.data.category === category)
 ---
 

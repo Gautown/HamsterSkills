@@ -42,8 +42,8 @@ jobs:
   refresh:
     name: 同步并部署
     runs-on: ubuntu-latest
-    # 构建×2 + AI 分类（首次全量回填约 35 分钟，之后接近 0）+ 双站上传
-    timeout-minutes: 90
+    # 构建×2 + AI 分类（首次全量回填约 35 分钟，之后接近 0）+ 五站上传
+    timeout-minutes: 120
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -112,7 +112,7 @@ jobs:
       - name: 构建（应用 AI 分类）
         run: npm run build
 
-      - name: 切分双站资产
+      - name: 切分五站资产
         run: npm run split
 
       # 审计现在会在覆盖率缺口或限流降级时以非 0 退出（见 scripts/audit.mjs 末尾），
@@ -125,6 +125,18 @@ jobs:
 
       - name: 部署英文站 Worker
         run: npm run deploy:en
+
+      # 三个新语言站均为纯静态 Worker（同 en 站模式）：
+      # 聊天 /api/chat 与 /skills-index.json 永远落在根域 zh Worker，
+      # 因此新 Worker 无需 AI 秘钥、KV 等任何绑定。
+      - name: 部署繁中站 Worker
+        run: npm run deploy:zhtw
+
+      - name: 部署韩文站 Worker
+        run: npm run deploy:ko
+
+      - name: 部署马来站 Worker
+        run: npm run deploy:ms
 
       # 必须放在部署之后：无论前面哪步失败，语料与记忆库都要留存，
       # 否则下次运行要重新爬取全部仓库、并为已知内容重复付费。

@@ -1,0 +1,17 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import CategoryIndex from '../../../components/CategoryIndex.astro'
+import { T } from '../../../i18n/translations'
+
+const skills = await getCollection('skills')
+const t = T['zh-tw']
+---
+
+<Layout
+  lang="zh-tw"
+  title={t.categoriesTitle}
+  description={`瀏覽 ${skills.length} 個 AI Skill，涵蓋 10 個用途分類——軟體開發、繪圖設計、寫作、資料、辦公等，複製即用。`}
+>
+  <CategoryIndex locale="zh-tw" skills={skills} />
+</Layout>

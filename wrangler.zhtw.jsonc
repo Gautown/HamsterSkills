@@ -1,0 +1,20 @@
+{
+  // 繁中站 Worker：纯静态资产（无 Worker 脚本，减少请求额度消耗）
+  // 聊天 /api/chat 与 /skills-index.json 由根域 zh Worker 提供（同域跨 Worker）
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hamster-skills-zhtw",
+  "compatibility_date": "2026-10-11",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./dist-zhtw",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "observability": {
+    "enabled": true
+  },
+  // 自定义域名：繁中站只占用 /zh-tw/*，其余路径命中根域的 zh Worker。
+  // 两者同 zone 且路径不重叠，Cloudflare 会按最精确匹配分派
+  // zone_name 填域名所属的 zone（子域名与 zone 仍是 gautown.top）
+  "routes": [{ "pattern": "skill.gautown.top/zh-tw/*", "zone_name": "gautown.top" }]
+}

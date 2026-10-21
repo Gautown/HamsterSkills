@@ -16,6 +16,7 @@
  */
 import Layout from '../layouts/Layout.astro'
 import { T, type Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
 import { CATEGORY_NAMES } from '../lib/categories'
 
 interface Props {
@@ -24,7 +25,7 @@ interface Props {
 
 const { lang } = Astro.props
 const t = T[lang]
-const base = lang === 'en' ? '/en' : ''
+const base = baseOf(lang)
 
 /*
  * 结果页不参与索引：内容由 URL 参数决定，没有稳定内容可抓，
@@ -33,6 +34,7 @@ const base = lang === 'en' ? '/en' : ''
 const labels = {
   locale: lang,
   base,
+  catLoc: CATEGORY_NAMES[lang],
   catZh: CATEGORY_NAMES.zh,
   catEn: CATEGORY_NAMES.en,
   githubLabel: t.githubLabel,
@@ -107,10 +109,11 @@ const strings = {
   const CARD = JSON.parse(root?.dataset.cards ?? '{}')
 
   interface CardLabels {
-    locale: 'zh' | 'en'
+    locale: 'zh' | 'zh-tw' | 'en' | 'ko' | 'ms'
     base: string
     catZh: Record<string, string>
     catEn: Record<string, string>
+    catLoc?: Record<string, string>
     githubLabel: string
     copyPrompt: string
   }
@@ -137,6 +140,7 @@ const strings = {
     base: CARD.base ?? '',
     catZh: CARD.catZh ?? {},
     catEn: CARD.catEn ?? {},
+    catLoc: CARD.catLoc,
     githubLabel: CARD.githubLabel ?? '',
     copyPrompt: CARD.copyPrompt ?? '',
   }

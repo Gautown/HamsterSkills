@@ -1,0 +1,23 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import TagPage from '../../../components/TagPage.astro'
+import { buildTagPaths } from '../../../lib/tags'
+
+export async function getStaticPaths() {
+  const skills = await getCollection('skills')
+  return buildTagPaths(skills).map(({ slug, tags }) => ({ params: { tag: slug }, props: { tags } }))
+}
+
+const skills = await getCollection('skills')
+const { tags } = Astro.props as { tags: string[] }
+const tagged = skills.filter((s) => s.data.tags?.includes(tags[0]))
+---
+
+<Layout
+  lang="ms"
+  title={`#${tags[0]}`}
+  description={`${tagged.length} kemahiran AI bertag #${tags[0]}${tags.slice(1, 4).map((x) => ' #' + x).join('')}`}
+>
+  <TagPage locale="ms" tags={tags} skills={skills} />
+</Layout>

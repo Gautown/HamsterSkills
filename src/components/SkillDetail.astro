@@ -6,6 +6,8 @@ import CopyPrompt from './CopyPrompt.astro'
 import GiscusComments from './GiscusComments.astro'
 import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
 import { T, type Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
+import { usesZhContent } from '../lib/languages'
 
 interface Props {
   locale: Locale
@@ -38,16 +40,20 @@ const d = entry.data as {
   files?: string[]
 }
 const t = T[locale]
-const base = locale === 'en' ? '/en' : ''
-const title = locale === 'en' ? d.titleEn : d.title
-const desc = locale === 'en' ? d.descriptionEn : d.description
+const base = baseOf(locale)
+const title = usesZhContent(locale) ? d.title : d.titleEn
+const desc = usesZhContent(locale) ? d.description : d.descriptionEn
 const catName = CATEGORY_NAMES[locale][d.category]
 const sameCat = skills.filter(s => s.data.category === d.category && s.id !== entry.id)
 const related = (sameCat.length > 0 ? sameCat : skills.filter(s => s.id !== entry.id)).slice(0, 3)
 const md = renderSkillMarkdown
 const evaluationHtml = md(d.evaluation)
 const guideHtml = md(d.guide)
-const gradeLabel = d.grade ? (locale === 'zh' ? `${d.grade}${t.gradeSuffix}` : `Grade ${d.grade}`) : ''
+const gradeLabel = d.grade
+  ? locale === 'zh' || locale === 'zh-tw'
+    ? `${d.grade}${t.gradeSuffix}`
+    : `Grade ${d.grade}`
+  : ''
 
 /*
  * 正文显示用渲染：超长内容截断、HTML 规整。
@@ -176,12 +182,12 @@ const skillMdText = [
           )}
           {bodyView.truncated && (
             <p class="tab-truncated">
-              {locale === 'en'
-                ? `This document is very long (${bodyView.fullLength.toLocaleString()} characters); only the first part is shown.`
-                : `本文档较长（${bodyView.fullLength.toLocaleString()} 字符），此处仅展示前一部分。`}
+              {usesZhContent(locale)
+                ? `本文档较长（${bodyView.fullLength.toLocaleString()} 字符），此处仅展示前一部分。`
+                : `This document is very long (${bodyView.fullLength.toLocaleString()} characters); only the first part is shown.`}
               {d.github && (
                 <a href={d.github} target="_blank" rel="noopener">
-                  {locale === 'en' ? ' View the full version on GitHub ↗' : ' 在 GitHub 查看完整内容 ↗'}
+                  {usesZhContent(locale) ? ' 在 GitHub 查看完整内容 ↗' : ' View the full version on GitHub ↗'}
                 </a>
               )}
             </p>
@@ -289,7 +295,7 @@ const skillMdText = [
               <div class="stars-row">
                 <span class="stars-icon">★</span>
                 <span class="stars-num">{stars.toLocaleString()}</span>
-                <span class="stars-label">{locale === 'en' ? 'repo stars' : '仓库热度'}</span>
+                <span class="stars-label">{usesZhContent(locale) ? '仓库热度' : 'repo stars'}</span>
               </div>
             )}
             {(hasScore || hasLike) && (
@@ -394,7 +400,7 @@ const skillMdText = [
           <div class="related-list">
             {related.map(r => (
               <a class="related-item" href={`${base}/skills/${r.id}`}>
-                <span class="related-name">{locale === 'en' ? r.data.titleEn : r.data.title}</span>
+                <span class="related-name">{usesZhContent(locale) ? r.data.title : r.data.titleEn}</span>
                 <span class="related-cat">{CATEGORY_NAMES[locale][r.data.category as CategoryKey]}</span>
               </a>
             ))}

@@ -4,6 +4,7 @@ import Header from '../components/Header.astro'
 import Footer from '../components/Footer.astro'
 import ChatWidget from '../components/ChatWidget.astro'
 import { T, type Locale } from '../i18n/translations'
+import { LANG_META, LOCALES, stripBase } from '../lib/languages'
 
 interface Props {
   lang: Locale
@@ -12,14 +13,6 @@ interface Props {
   description?: string
   /** 该页面的站点内路径（如 /skills/pdf），用于拼 canonical 与 og:url */
   path?: string
-  /**
-   * 同一内容的另一种语言版本的绝对 URL。
-   *
-   * 站内中英是同一批内容的两套 URL（zh 在根、en 在 /en/），
-   * 没有 hreflang 互指时搜索引擎无法判断哪套权威，
-   * 存在两套互相稀释的风险（典型的重复内容形态）。
-   */
-  alternate?: { lang: string; href: string }
   /** og:type；详情页传 article 类语义，其余留空按 website */
   ogType?: string
   /**
@@ -43,7 +36,7 @@ interface Props {
   }
 }
 
-const { lang, title, description, path, alternate, ogType, noindex, i18n, cards, skill } = Astro.props
+const { lang, title, description, path, ogType, noindex, i18n, cards, skill } = Astro.props
 const t = T[lang]
 
 /*
@@ -60,12 +53,26 @@ const pageDesc = description ?? t.siteDesc
  * 社交分享图（og.png）已下线：og:image / twitter:image 标签连同
  * 生成脚本 scripts/make-og-image.mjs 一并删除，社交平台分享为纯文字卡片。
  */
-/** hreflang 必须是绝对 URL */
-const alternateHref = alternate ? new URL(alternate.href, SITE_ORIGIN).href : null
+/**
+ * 五语言 hreflang 集合。
+ *
+ * 全站五语言是同一批内容的五套 URL（zh 挂根，其余各占一个路径段），
+ * 没有 hreflang 互指时搜索引擎无法判断哪套权威，存在互相稀释的风险。
+ * 语言前缀已是结构化的（/zh-tw /en /ko /ms），因此无需每个页面再传
+ * alternate —— 从 canonical 路径抹掉当前前缀，再为每种语言补上各自的
+ * 前缀即可得到全套平级 URL。
+ */
+const strippedPath = stripBase(pathname, lang)
+const altLinks = LOCALES.map(l => ({
+  lang: LANG_META[l].htmlLang,
+  href: new URL(`${LANG_META[l].base}${strippedPath}`, SITE_ORIGIN).href,
+}))
+/** x-default：请求的语言未提供时的兜底入口，指向默认语言（简中）版本 */
+const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
 ---
 
 <!doctype html>
-<html lang={lang === 'zh' ? 'zh-CN' : 'en'}>
+<html lang={LANG_META[lang].htmlLang}>
   <head>
     <meta charset="UTF-8" />
     <script is:inline>
@@ -89,19 +96,24 @@ const alternateHref = alternate ? new URL(alternate.href, SITE_ORIGIN).href : nu
     <link rel="canonical" href={canonical} />
 
     {/*
-      hreflang：中英两套 URL 互指，声明「这是同一内容的不同语言版本」。
-      没有它，搜索引擎只能自行猜测哪套权威，两套会互相稀释。
+      hreflang：五套 URL 完整互指（含本页自指，Google 要求自指是合法输入），
+      声明「这是同一内容的不同语言版本」。
+      没有它，搜索引擎只能自行猜测哪套权威，互相稀释。
     */}
-    <link rel="alternate" hreflang={lang === 'zh' ? 'zh-CN' : 'en'} href={canonical} />
-    {alternateHref && <link rel="alternate" hreflang={lang === 'zh' ? 'en' : 'zh-CN'} href={alternateHref} />}
-    <link rel="alternate" hreflang="x-default" href={canonical} />
+    {altLinks.map(a => (
+      <link rel="alternate" hreflang={a.lang} href={a.href} />
+    ))}
+    <link rel="alternate" hreflang="x-default" href={xDefaultHref} />
 
     <meta property="og:type" content={ogType ?? 'website'} />
     <meta property="og:site_name" content={t.siteName} />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDesc} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:locale" content={lang === 'zh' ? 'zh_CN' : 'en_US'} />
+    <meta property="og:locale" content={LANG_META[lang].ogLocale} />
+    {LOCALES.filter(l => l !== lang).map(l => (
+      <meta property="og:locale:alternate" content={LANG_META[l].ogLocale} />
+    ))}
 
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={pageTitle} />

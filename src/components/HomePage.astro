@@ -3,6 +3,8 @@ import type { CollectionEntry } from 'astro:content'
 import SkillCard from './SkillCard.astro'
 import { CATEGORY_KEYS, CATEGORY_NAMES } from '../lib/categories'
 import { T, type Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
+import { LOCALES } from '../lib/languages'
 
 interface Props {
   locale: Locale
@@ -11,7 +13,7 @@ interface Props {
 
 const { locale, skills } = Astro.props
 const t = T[locale]
-const base = locale === 'en' ? '/en' : ''
+const base = baseOf(locale)
 const counts: Record<string, number> = { all: skills.length }
 for (const key of CATEGORY_KEYS) {
   counts[key] = skills.filter(s => s.data.category === key).length
@@ -48,7 +50,7 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
         <div class="stat-label">{t.statCategories}</div>
       </div>
       <div class="stat">
-        <div class="stat-value">ZH·EN</div>
+        <div class="stat-value">{LOCALES.length}</div>
         <div class="stat-label">{t.statLanguages}</div>
       </div>
       <div class="stat">
@@ -138,6 +140,7 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
             copyPrompt: t.copyPrompt,
             loading: t.loadingAll,
             failed: t.loadFailed,
+            catLoc: CATEGORY_NAMES[locale],
             catZh: CATEGORY_NAMES.zh,
             catEn: CATEGORY_NAMES.en,
           })}
@@ -166,11 +169,12 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
   type IndexItem = import('../lib/skill-card.ts').IndexItem
   interface IndexLabels {
     base: string
-    locale: 'zh' | 'en'
+    locale: 'zh' | 'zh-tw' | 'en' | 'ko' | 'ms'
     githubLabel: string
     copyPrompt: string
     loading: string
     failed: string
+    catLoc?: Record<string, string>
     catZh: Record<string, string>
     catEn: Record<string, string>
   }

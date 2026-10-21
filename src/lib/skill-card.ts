@@ -4,6 +4,8 @@
  * 从 HomePage.astro 抽出来的：搜索结果页要渲染同样的卡片，
  * 复制一份会导致两处样式/字段漂移（历史上卡片已经改过好几轮）。
  */
+import type { Locale } from '../i18n/translations'
+import { usesZhContent } from './languages'
 
 export interface IndexItem {
   id: string
@@ -21,10 +23,12 @@ export interface IndexItem {
 }
 
 export interface CardLabels {
-  locale: 'zh' | 'en'
+  locale: Locale
   base: string
   catZh: Record<string, string>
   catEn: Record<string, string>
+  /** 当前语言的分类名（HomePage / SearchPage 注入）；缺省回退到中英分支 */
+  catLoc?: Record<string, string>
   githubLabel: string
   copyPrompt: string
 }
@@ -62,9 +66,9 @@ export function searchBlob(item: IndexItem, labels: CardLabels): string {
 }
 
 export function cardHtml(item: IndexItem, rank: number, labels: CardLabels): string {
-  const title = labels.locale === 'en' ? item.titleEn : item.title
-  const desc = labels.locale === 'en' ? item.descEn : item.desc
-  const catNames = labels.locale === 'en' ? labels.catEn : labels.catZh
+  const title = usesZhContent(labels.locale) ? item.title : item.titleEn
+  const desc = usesZhContent(labels.locale) ? item.desc : item.descEn
+  const catNames = labels.catLoc ?? (usesZhContent(labels.locale) ? labels.catZh : labels.catEn)
   const pills = [
     item.grade ? `<span class="grade-mini g-${escapeHtml(item.grade)}">${escapeHtml(item.grade)}</span>` : '',
     item.score != null ? `<span class="score-mini">${escapeHtml(String(item.score))}</span>` : '',

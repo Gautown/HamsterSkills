@@ -1,0 +1,17 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import CategoryIndex from '../../../components/CategoryIndex.astro'
+import { T } from '../../../i18n/translations'
+
+const skills = await getCollection('skills')
+const t = T.ko
+---
+
+<Layout
+  lang="ko"
+  title={t.categoriesTitle}
+  description={`${skills.length}개의 AI 스킬을 10개 용도 카테고리로 탐색 — 개발, 디자인, 글쓰기, 데이터, 사무 등. 복사해서 바로 사용하세요.`}
+>
+  <CategoryIndex locale="ko" skills={skills} />
+</Layout>

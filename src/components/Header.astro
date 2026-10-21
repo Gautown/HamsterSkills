@@ -14,6 +14,8 @@ import { CATEGORY_KEYS, CATEGORY_NAMES } from '../lib/categories'
 import { tagSlug } from '../lib/tags'
 import { baseOf, homePathOf, searchPathOf } from '../lib/site-paths'
 import { T, type Locale } from '../i18n/translations'
+import { FLAG_SVG } from '../lib/flags'
+import { LANG_META, LOCALES, stripBase } from '../lib/languages'
 
 interface Props {
   lang: Locale
@@ -23,7 +25,17 @@ const { lang } = Astro.props
 const t = T[lang]
 const base = baseOf(lang)
 const pathname = Astro.url.pathname
-const altPath = lang === 'en' ? pathname.replace(/^\/en/, '') || '/' : `/en${pathname}`
+
+/**
+ * 语言菜单：当前页面在五种语言下的同位置入口。
+ * 与 hreflang 同一套推导（stripBase 抹掉当前前缀 → 各语言补前缀）。
+ */
+const langLinks = LOCALES.map(l => ({
+  code: l,
+  label: LANG_META[l].label,
+  href: `${LANG_META[l].base}${stripBase(pathname, lang)}`,
+}))
+const flagOf = (code: Locale) => FLAG_SVG[code]
 
 /** 进入标签下拉的最小技能数；实测 ≥10 的标签共 16 个，菜单长度可控 */
 const HOT_TAG_MIN = 10
@@ -180,15 +192,32 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
         </svg>
       </button>
       {/*
-        语言按钮：文字换成地球图标。
-        title 仍给出目标语言（EN / 中文），纯图标看不出会跳到哪。
+        语言按钮：地球图标 + 下拉菜单（旗帜-语言名）。
+        复用 nav-drop 的 details 互斥/外点关闭逻辑；菜单项 HTML 与桌面版相同。
       */}
-      <a class="lang-toggle" href={altPath} aria-label={t.langSwitchLabel} title={t.langSwitchLabel}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="9" />
-          <path d="M3 12h18M12 3a14 14 0 010 18a14 14 0 010-18z" />
-        </svg>
-      </a>
+      <details class="nav-drop lang-drop" id="nav-lang">
+        <summary class="lang-toggle" aria-label={t.langSwitchLabel} title={t.langSwitchLabel}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3a14 14 0 010 18a14 14 0 010-18z" />
+          </svg>
+        </summary>
+        <div class="nav-drop-menu lang-menu">
+          {langLinks.map(l => (
+            <a
+              href={l.href}
+              class:list={['lang-item', { current: l.code === lang }]}
+              aria-current={l.code === lang ? 'true' : undefined}
+            >
+              <span class="flag" set:html={flagOf(l.code)} />
+              <span class="lang-name">{l.label}</span>
+              {l.code === lang && (
+                <span class="lang-check" aria-hidden="true">✓</span>
+              )}
+            </a>
+          ))}
+        </div>
+      </details>
 
       {/* 窄屏汉堡按钮：仅 ≤900px 显示 */}
       <button
@@ -251,12 +280,33 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
             <path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z" />
           </svg>
         </button>
-        <a class="lang-toggle" href={altPath} aria-label={t.langSwitchLabel} title={t.langSwitchLabel}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M3 12h18M12 3a14 14 0 010 18a14 14 0 010-18z" />
-          </svg>
-        </a>
+        /*
+          窄屏面板里的语言菜单：与桌面版同一份 HTML。
+          details/summary 的开合不依赖 JS；外点关闭/互斥由同一套 .nav-drop 监听覆盖。
+        */
+        <details class="nav-drop lang-drop lang-drop-mobile">
+          <summary class="lang-toggle" aria-label={t.langSwitchLabel} title={t.langSwitchLabel}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3a14 14 0 010 18a14 14 0 010-18z" />
+            </svg>
+          </summary>
+          <div class="nav-drop-menu lang-menu">
+            {langLinks.map(l => (
+              <a
+                href={l.href}
+                class:list={['lang-item', { current: l.code === lang }]}
+                aria-current={l.code === lang ? 'true' : undefined}
+              >
+                <span class="flag" set:html={flagOf(l.code)} />
+                <span class="lang-name">{l.label}</span>
+                {l.code === lang && (
+                  <span class="lang-check" aria-hidden="true">✓</span>
+                )}
+              </a>
+            ))}
+          </div>
+        </details>
       </div>
     </div>
   </div>
@@ -321,8 +371,8 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
   const searchForm = document.getElementById('nav-search') as HTMLFormElement | null
   const searchInput = document.getElementById('nav-search-input') as HTMLInputElement | null
   const mobileInput = document.querySelector<HTMLInputElement>('.nav-search-mobile input')
-  const onHomePage = /^\/(en\/?)?$/.test(location.pathname)
-  const onSearchPage = /^\/(en\/)?search\/?$/.test(location.pathname)
+  const onHomePage = /^\/(?:en|zh-tw|ko|ms)?\/?$/.test(location.pathname)
+  const onSearchPage = /^\/(?:en|zh-tw|ko|ms)?\/?search\/?$/.test(location.pathname)
   const canFilterInPlace = onHomePage || onSearchPage
 
   /*

@@ -12,14 +12,12 @@ export async function getStaticPaths() {
 const skills = await getCollection('skills')
 const { tags } = Astro.props as { tags: string[] }
 const tagged = skills.filter((s) => s.data.tags?.includes(tags[0]))
-const slug = Astro.params.tag as string
 ---
 
 <Layout
   lang="zh"
   title={`#${tags[0]}`}
   description={`带有 #${tags[0]} 标签的 ${tagged.length} 个 AI Skill，${tags.slice(0, 4).map((x) => '#' + x).join(' ')}`}
-  alternate={{ lang: 'en', href: `/en/tags/${slug}/` }}
 >
   <TagPage locale="zh" tags={tags} skills={skills} />
 </Layout>

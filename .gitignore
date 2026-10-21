@@ -2,6 +2,9 @@ node_modules/
 dist/
 dist-zh/
 dist-en/
+dist-zhtw/
+dist-ko/
+dist-ms/
 .astro/
 .cache/
 .wrangler/

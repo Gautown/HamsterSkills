@@ -9,20 +9,35 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { baseOf, homePathOf, searchPathOf, SEARCH_PATHS } from '../src/lib/site-paths.ts'
+import { baseOf, homePathOf, searchPathOf, SEARCH_PATHS, BASES } from '../src/lib/site-paths.ts'
 
-test('baseOf：中文站在根，英文站在 /en', () => {
+const LANGS = ['zh', 'zh-tw', 'en', 'ko', 'ms']
+
+test('baseOf：五个语言各占一个前缀，zh 挂根', () => {
   assert.equal(baseOf('zh'), '')
+  assert.equal(baseOf('zh-tw'), '/zh-tw')
   assert.equal(baseOf('en'), '/en')
+  assert.equal(baseOf('ko'), '/ko')
+  assert.equal(baseOf('ms'), '/ms')
+  // 前缀互不冲突：任何一个不能是另一个的前缀（'/ko' 不是问题，但 '/k' 与 '/ko' 类关系要排除）
+  for (const a of LANGS) {
+    for (const b of LANGS) {
+      if (a === b || BASES[a] === '') continue
+      assert.notEqual(BASES[a], BASES[b])
+    }
+  }
 })
 
 test('homePathOf：空前缀时回落到 /', () => {
   assert.equal(homePathOf('zh'), '/')
+  assert.equal(homePathOf('zh-tw'), '/zh-tw')
   assert.equal(homePathOf('en'), '/en')
+  assert.equal(homePathOf('ko'), '/ko')
+  assert.equal(homePathOf('ms'), '/ms')
 })
 
 test('★ searchPathOf：绝不产生协议相对 URL', () => {
-  for (const lang of ['zh', 'en']) {
+  for (const lang of LANGS) {
     const p = searchPathOf(lang)
     // `//x` 是协议相对 URL，`/\x` 在某些解析器下等价于转义
     assert.ok(
@@ -33,14 +48,23 @@ test('★ searchPathOf：绝不产生协议相对 URL', () => {
   }
 })
 
-test('searchPathOf：中英两站各自正确', () => {
+test('searchPathOf：五站各自正确', () => {
   assert.equal(searchPathOf('zh'), '/search/')
+  assert.equal(searchPathOf('zh-tw'), '/zh-tw/search/')
   assert.equal(searchPathOf('en'), '/en/search/')
-  assert.deepEqual(SEARCH_PATHS, { zh: '/search/', en: '/en/search/' })
+  assert.equal(searchPathOf('ko'), '/ko/search/')
+  assert.equal(searchPathOf('ms'), '/ms/search/')
+  assert.deepEqual(SEARCH_PATHS, {
+    zh: '/search/',
+    'zh-tw': '/zh-tw/search/',
+    en: '/en/search/',
+    ko: '/ko/search/',
+    ms: '/ms/search/',
+  })
 })
 
 test('searchPathOf：与 homePathOf 保持同前缀', () => {
-  for (const lang of ['zh', 'en']) {
+  for (const lang of LANGS) {
     const home = homePathOf(lang)
     const search = searchPathOf(lang)
     // homePath 为 '/' 时 lang 前缀是空串，'/' 既是前缀也是它的一部分

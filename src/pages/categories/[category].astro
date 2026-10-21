@@ -17,7 +17,6 @@ const inCategory = skills.filter((s) => s.data.category === category)
   lang="zh"
   title={CATEGORY_NAMES.zh[category]}
   description={`「${CATEGORY_NAMES.zh[category]}」分类下的 ${inCategory.length} 个 AI Skill，附用途说明与来源仓库，可一键复制 Prompt。`}
-  alternate={{ lang: 'en', href: `/en/categories/${category}/` }}
 >
   <CategoryPage locale="zh" category={category} skills={skills} />
 </Layout>

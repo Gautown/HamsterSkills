@@ -2,6 +2,8 @@
 import type { CollectionEntry } from 'astro:content'
 import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
 import { T, type Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
+import { usesZhContent } from '../lib/languages'
 
 interface Props {
   entry: CollectionEntry<'skills'>
@@ -24,9 +26,9 @@ const d = entry.data as {
   likes?: number
 }
 const t = T[lang]
-const base = lang === 'en' ? '/en' : ''
-const title = lang === 'en' ? d.titleEn : d.title
-const desc = lang === 'en' ? d.descriptionEn : d.description
+const base = baseOf(lang)
+const title = usesZhContent(lang) ? d.title : d.titleEn
+const desc = usesZhContent(lang) ? d.description : d.descriptionEn
 const searchBlob = [
   d.title,
   d.titleEn,

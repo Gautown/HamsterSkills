@@ -52,9 +52,24 @@ const site = resolveSite(process.env.SITE_URL || env.SITE_URL)
 
 export default defineConfig({
   site,
-  integrations: [sitemap()],
+  integrations: [
+    sitemap({
+      // 与 astro.i18n 的路由一一对应：sitemap 会为每条 URL 生成
+      // 五语言的 hreflang 互指，与页面 <head> 里的声明保持一致
+      i18n: {
+        defaultLocale: 'zh',
+        locales: {
+          zh: 'zh-CN',
+          'zh-tw': 'zh-TW',
+          en: 'en',
+          ko: 'ko',
+          ms: 'ms',
+        },
+      },
+    }),
+  ],
   i18n: {
-    locales: ['zh', 'en'],
+    locales: ['zh', 'zh-tw', 'en', 'ko', 'ms'],
     defaultLocale: 'zh',
     routing: { prefixDefaultLocale: false },
   },

@@ -321,6 +321,59 @@ h2 {
   }
 }
 
+/*
+ * 语言下拉菜单：旗帜-语言名-当前勾选。
+ * 地球按钮位于导航最右端，菜单左对齐会伸出视口，因此右对齐。
+ * 各项自带 hover / aria-current 样式（见上方 .nav-drop-menu a 规则）。
+ */
+.lang-menu {
+  min-width: 205px;
+  left: auto;
+  right: 0;
+}
+
+.lang-item {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.lang-item .lang-name {
+  white-space: nowrap;
+}
+
+.lang-item .flag {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 20px;
+  aspect-ratio: 3 / 2;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.lang-item .flag svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lang-item .lang-check {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--accent-text);
+}
+
+.lang-item.current {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* 窄屏面板里的语言菜单：右缘固定在面板容器内，与主题按钮底端对齐 */
+.nav-mobile-foot .lang-toggle {
+  cursor: pointer;
+}
+
 .nav-drop-menu a {
   display: flex;
   align-items: center;

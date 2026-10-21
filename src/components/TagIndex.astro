@@ -1,6 +1,7 @@
 ---
 import type { CollectionEntry } from 'astro:content'
 import { T, type Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
 import { tagSlug } from '../lib/tags'
 
 interface Props {
@@ -10,7 +11,7 @@ interface Props {
 
 const { locale, skills } = Astro.props
 const t = T[locale]
-const base = locale === 'en' ? '/en' : ''
+const base = baseOf(locale)
 const tagCounts = new Map<string, { tag: string; count: number }>()
 for (const s of skills) {
   for (const tag of s.data.tags) {

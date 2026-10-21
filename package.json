@@ -17,7 +17,10 @@
     "triage": "node scripts/triage.mjs",
     "predeploy": "node scripts/predeploy.mjs",
     "deploy:zh": "npm run predeploy && npx --yes wrangler@4 deploy -c wrangler.zh.jsonc",
-    "deploy:en": "npm run predeploy && npx --yes wrangler@4 deploy -c wrangler.en.jsonc"
+    "deploy:en": "npm run predeploy && npx --yes wrangler@4 deploy -c wrangler.en.jsonc",
+    "deploy:zhtw": "npm run predeploy && npx --yes wrangler@4 deploy -c wrangler.zhtw.jsonc",
+    "deploy:ko": "npm run predeploy && npx --yes wrangler@4 deploy -c wrangler.ko.jsonc",
+    "deploy:ms": "npm run predeploy && npx --yes wrangler@4 deploy -c wrangler.ms.jsonc"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",

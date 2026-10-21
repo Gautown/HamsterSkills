@@ -1,0 +1,12 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import TagIndex from '../../../components/TagIndex.astro'
+import { T } from '../../../i18n/translations'
+
+const skills = await getCollection('skills')
+---
+
+<Layout lang="ko" title={T.ko.tagsTitle}>
+  <TagIndex locale="ko" skills={skills} />
+</Layout>
