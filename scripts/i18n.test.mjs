@@ -17,8 +17,55 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { T } from '../src/i18n/translations.ts'
+import { LANG_META } from '../src/lib/languages.ts'
+import { FLAG_SVG } from '../src/lib/flags.ts'
+import { BASES } from '../src/lib/site-paths.ts'
+/** astro.config 里也有一份 locales（i18n 路由 + sitemap i18n）——它是第 6 处影子配置，必须同源对齐 */
+import astroConfig from '../astro.config.mjs'
 
 const LANGS = ['zh', 'zh-tw', 'en', 'ko', 'ms']
+
+test('★ 全源对齐：路由配置 = 语言注册表 = 词条 = 路径表 = 旗帜表', () => {
+  // 加一种语言时五处（+徽章等分支）必须同步，本测试把漏改挡在构建前。
+  const configured = astroConfig.i18n.locales
+  assert.deepEqual([...configured], LANGS, `astro.config.mjs 的 i18n.locales 顺序/内容与约定不符: ${configured}`)
+  assert.equal(astroConfig.i18n.defaultLocale, 'zh', '默认语言应为简中（挂根）')
+
+  const sortKey = (x) => [...x].sort()
+  assert.deepEqual(sortKey(Object.keys(T)), sortKey(LANGS), 'translations 的语言键与路由配置不一致')
+  assert.deepEqual(sortKey(Object.keys(LANG_META)), sortKey(LANGS), 'LANG_META 与路由配置不一致')
+  assert.deepEqual(sortKey(Object.keys(BASES)), sortKey(LANGS), 'site-paths BASES 与路由配置不一致')
+  assert.deepEqual(sortKey(Object.keys(FLAG_SVG)), sortKey(LANGS), 'flags 与路由配置不一致')
+})
+
+test('含占位符的描述模板五语言占位符集合一致', () => {
+  // {tag} {n} {tags} 由 fillPlaceholders 填充；某语言漏一个占位符
+  // 会渲染出带 {残留} 或缺失信息的 <meta> 描述。
+  const TEMPLATE_KEYS = ['tagsMetaDesc', 'categoriesMetaDesc', 'categoryMetaDesc']
+  for (const key of TEMPLATE_KEYS) {
+    const perLang = LANGS.map((lang) => ({
+      lang,
+      vars: [...(String(T[lang][key]).matchAll(/\{(\w+)\}/g))].map((m) => m[1]).sort(),
+    }))
+    const base = perLang[0].vars
+    for (const { lang, vars } of perLang.slice(1)) {
+      assert.deepEqual(
+        vars,
+        base,
+        `${key} 的占位符 ${lang}(${vars}) 与 zh(${base}) 不一致`,
+      )
+    }
+    assert.ok(base.length > 0, `${key} 应至少含一个占位符`)
+    // fillPlaceholders 会把未知占位符原样保留，因此模板里不允许出现
+    // 客户端脚本专用占位符以外的重复定义矛盾——检查同一占位符不出现两次
+    for (const { lang } of perLang) {
+      const raw = String(T[lang][key])
+      for (const v of base) {
+        assert.ok(!raw.includes(`{${v}{`), `${lang}.${key} 存在损坏的占位符 {${v}{`)
+      }
+    }
+  }
+})
 
 test('五种语言的键集合与 zh 完全一致', () => {
   const zh = Object.keys(T.zh).sort()

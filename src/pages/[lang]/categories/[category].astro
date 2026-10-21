@@ -1,0 +1,27 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import CategoryPage from '../../../components/CategoryPage.astro'
+import { CATEGORY_KEYS, CATEGORY_NAMES, type CategoryKey } from '../../../lib/categories'
+import { fillPlaceholders, T } from '../../../i18n/translations'
+import { NON_DEFAULT_LOCALES, localeFromParams } from '../../../lib/languages'
+
+export function getStaticPaths() {
+  return NON_DEFAULT_LOCALES.flatMap((lang) =>
+    CATEGORY_KEYS.map((category) => ({ params: { lang, category }, props: { category } })),
+  )
+}
+
+const lang = localeFromParams(Astro.params.lang)
+const category = Astro.params.category as CategoryKey
+const skills = await getCollection('skills')
+const inCategory = skills.filter((s) => s.data.category === category)
+const description = fillPlaceholders(T[lang].categoryMetaDesc, {
+  category: CATEGORY_NAMES[lang][category],
+  n: inCategory.length,
+})
+---
+
+<Layout lang={lang} title={CATEGORY_NAMES[lang][category]} description={description}>
+  <CategoryPage locale={lang} category={category} skills={skills} />
+</Layout>

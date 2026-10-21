@@ -1,0 +1,20 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import CategoryIndex from '../../../components/CategoryIndex.astro'
+import { T, fillPlaceholders } from '../../../i18n/translations'
+import { NON_DEFAULT_LOCALES, localeFromParams } from '../../../lib/languages'
+
+export function getStaticPaths() {
+  return NON_DEFAULT_LOCALES.map((lang) => ({ params: { lang } }))
+}
+
+const lang = localeFromParams(Astro.params.lang)
+const t = T[lang]
+const skills = await getCollection('skills')
+const description = fillPlaceholders(t.categoriesMetaDesc, { n: skills.length })
+---
+
+<Layout lang={lang} title={t.categoriesTitle} description={description}>
+  <CategoryIndex locale={lang} skills={skills} />
+</Layout>

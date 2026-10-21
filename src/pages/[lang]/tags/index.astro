@@ -1,0 +1,18 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import TagIndex from '../../../components/TagIndex.astro'
+import { T } from '../../../i18n/translations'
+import { NON_DEFAULT_LOCALES, localeFromParams } from '../../../lib/languages'
+
+export function getStaticPaths() {
+  return NON_DEFAULT_LOCALES.map((lang) => ({ params: { lang } }))
+}
+
+const lang = localeFromParams(Astro.params.lang)
+const skills = await getCollection('skills')
+---
+
+<Layout lang={lang} title={T[lang].tagsTitle}>
+  <TagIndex locale={lang} skills={skills} />
+</Layout>

@@ -1,0 +1,10 @@
+---
+import SearchPage from '../../components/SearchPage.astro'
+import { NON_DEFAULT_LOCALES, localeFromParams } from '../../lib/languages'
+
+export function getStaticPaths() {
+  return NON_DEFAULT_LOCALES.map((lang) => ({ params: { lang } }))
+}
+---
+
+<SearchPage lang={localeFromParams(Astro.params.lang)} />

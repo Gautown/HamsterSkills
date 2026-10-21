@@ -1,0 +1,37 @@
+---
+import { getCollection, type CollectionEntry } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import SkillDetail from '../../../components/SkillDetail.astro'
+import { LANG_META, NON_DEFAULT_LOCALES, localeFromParams, usesZhContent } from '../../../lib/languages'
+
+export async function getStaticPaths() {
+  const skills = await getCollection('skills')
+  return NON_DEFAULT_LOCALES.flatMap((lang) =>
+    skills.map((entry) => ({ params: { lang, slug: entry.id }, props: { entry } })),
+  )
+}
+
+const lang = localeFromParams(Astro.params.lang)
+const { entry } = Astro.props as { entry: CollectionEntry<'skills'> }
+const skills = await getCollection('skills')
+if (!entry) return
+
+/* 技能正文语言分支：zh-tw 读中文数据，ko/ms 读英文数据（界面层已本地化，正文不重译） */
+const title = usesZhContent(lang) ? entry.data.title : entry.data.titleEn
+const description = usesZhContent(lang) ? entry.data.description : entry.data.descriptionEn
+---
+
+<Layout
+  lang={lang}
+  title={title}
+  description={description}
+  path={`${LANG_META[lang].base}/skills/${entry.id}/`}
+  skill={{
+    id: entry.id,
+    title,
+    category: entry.data.category,
+    description,
+  }}
+>
+  <SkillDetail locale={lang} entry={entry} skills={skills} />
+</Layout>

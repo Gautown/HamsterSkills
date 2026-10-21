@@ -1,0 +1,29 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../../layouts/Layout.astro'
+import TagPage from '../../../components/TagPage.astro'
+import { buildTagPaths } from '../../../lib/tags'
+import { NON_DEFAULT_LOCALES, localeFromParams } from '../../../lib/languages'
+import { fillPlaceholders, T } from '../../../i18n/translations'
+
+export async function getStaticPaths() {
+  const skills = await getCollection('skills')
+  return buildTagPaths(skills).flatMap(({ slug, tags }) =>
+    NON_DEFAULT_LOCALES.map((lang) => ({ params: { lang, tag: slug }, props: { tags } })),
+  )
+}
+
+const lang = localeFromParams(Astro.params.lang)
+const skills = await getCollection('skills')
+const { tags } = Astro.props as { tags: string[] }
+const tagged = skills.filter((s) => s.data.tags?.includes(tags[0]))
+const description = fillPlaceholders(T[lang].tagsMetaDesc, {
+  tag: tags[0],
+  n: tagged.length,
+  tags: tags.slice(0, 4).map((x) => '#' + x).join(' '),
+})
+---
+
+<Layout lang={lang} title={`#${tags[0]}`} description={description}>
+  <TagPage locale={lang} tags={tags} skills={skills} />
+</Layout>

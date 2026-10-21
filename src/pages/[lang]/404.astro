@@ -1,0 +1,22 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../layouts/Layout.astro'
+import { LANG_META, NON_DEFAULT_LOCALES, localeFromParams } from '../../lib/languages'
+import { T } from '../../i18n/translations'
+
+export function getStaticPaths() {
+  return NON_DEFAULT_LOCALES.map((lang) => ({ params: { lang } }))
+}
+
+const lang = localeFromParams(Astro.params.lang)
+const t = T[lang]
+---
+
+<Layout lang={lang} title="404">
+  <div class="container notfound">
+    <p class="nf-code">404</p>
+    <h1>{t.notFoundTitle}</h1>
+    <p class="sub">{t.notFoundDesc}</p>
+    <a class="btn btn-filled" href={`${LANG_META[lang].base}/`}>{t.notFoundHome}</a>
+  </div>
+</Layout>

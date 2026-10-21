@@ -29,6 +29,18 @@ export const LANG_META: Record<Locale, LangMeta> = {
 
 export const LOCALES = Object.keys(LANG_META) as Locale[]
 
+/** 动态路由 src/pages/[lang]/ 用：除默认语言外的全部语言 */
+export const NON_DEFAULT_LOCALES = LOCALES.filter((l) => l !== 'zh')
+
+/**
+ * 从动态路由参数还原语言。
+ * 构建时 getStaticPaths 只产出合法值，这里校验兜底：
+ * 万一参数缺失/拼错（如手写 URL 碰到 dev 预览），按默认语言渲染而不是崩溃。
+ */
+export function localeFromParams(lang: string | undefined): Locale {
+  return LOCALES.includes(lang as Locale) ? (lang as Locale) : 'zh'
+}
+
 /**
  * 该语言的技能卡片/详情使用哪套正文数据。
  *

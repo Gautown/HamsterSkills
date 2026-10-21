@@ -1,0 +1,17 @@
+---
+import { getCollection } from 'astro:content'
+import Layout from '../../layouts/Layout.astro'
+import HomePage from '../../components/HomePage.astro'
+import { LANG_META, NON_DEFAULT_LOCALES, localeFromParams } from '../../lib/languages'
+
+export function getStaticPaths() {
+  return NON_DEFAULT_LOCALES.map((lang) => ({ params: { lang } }))
+}
+
+const lang = localeFromParams(Astro.params.lang)
+const skills = await getCollection('skills')
+---
+
+<Layout lang={lang} path={`${LANG_META[lang].base}/`}>
+  <HomePage locale={lang} skills={skills} />
+</Layout>

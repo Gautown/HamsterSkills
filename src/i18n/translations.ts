@@ -14,6 +14,15 @@
  */
 export type Locale = 'zh' | 'zh-tw' | 'en' | 'ko' | 'ms'
 
+/**
+ * 把 {key} 占位符模板填充为最终文案（含变量的描述模板五语言共用同一变量集）。
+ * 只替换已传入的键：漏传时占位符原样保留，
+ * 会让渲染结果带着肉眼可见的 `{tag}`，比静默渲染空串更容易在预览时发现。
+ */
+export function fillPlaceholders(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (raw, key) => (key in vars ? String(vars[key]) : raw))
+}
+
 export const T = {
   zh: {
     siteName: '仓鼠AI技能库',
@@ -131,6 +140,12 @@ export const T = {
     sortScore: '评分',
     sortLikes: '点赞',
     promptNote: '将 {{变量}} 替换为实际内容后即可使用。',
+    /** 页面 <meta> 描述模板（占位符：{tag} {n} {tags}，由 fillPlaceholders 填充） */
+    tagsMetaDesc: '带有 #{tag} 标签的 {n} 个 AI Skill，{tags}',
+    /** 占位符：{n} */
+    categoriesMetaDesc: '按 10 个用途分类浏览 {n} 个 AI Skill，覆盖开发、设计、写作、数据、办公等方向，一键复制即用。',
+    /** 占位符：{category} {n} */
+    categoryMetaDesc: '「{category}」分类下的 {n} 个 AI Skill，附用途说明与来源仓库，可一键复制 Prompt。',
   },
   'zh-tw': {
     siteName: '倉鼠AI技能庫',
@@ -247,6 +262,12 @@ export const T = {
     sortScore: '評分',
     sortLikes: '點讚',
     promptNote: '將 {{變數}} 替換為實際內容後即可使用。',
+    /** 頁面 <meta> 描述模板（佔位符：{tag} {n} {tags}，由 fillPlaceholders 填充） */
+    tagsMetaDesc: '帶有 #{tag} 標籤的 {n} 個 AI Skill，{tags}',
+    /** 佔位符：{n} */
+    categoriesMetaDesc: '按 10 個用途分類瀏覽 {n} 個 AI Skill，涵蓋軟體開發、繪圖設計、寫作、資料、辦公等方向，複製即用。',
+    /** 佔位符：{category} {n} */
+    categoryMetaDesc: '「{category}」分類下的 {n} 個 AI Skill，附用途說明與來源倉庫，可一鍵複製 Prompt。',
   },
   en: {
     siteName: 'Hamster AI Skills',
@@ -365,6 +386,12 @@ export const T = {
     sortScore: 'Score',
     sortLikes: 'Likes',
     promptNote: 'Replace {{variables}} with real content before use.',
+    /** Page <meta> description templates (placeholders: {tag} {n} {tags}, filled by fillPlaceholders) */
+    tagsMetaDesc: '{n} AI skills tagged #{tag} — {tags}',
+    /** Placeholder: {n} */
+    categoriesMetaDesc: 'Browse {n} AI skills across 10 use-case categories — development, design, writing, data, office and more. Copy & go.',
+    /** Placeholders: {category} {n} */
+    categoryMetaDesc: '{n} AI skills in the "{category}" category, with purpose descriptions and source repositories. One-click copy.',
   },
   ko: {
     siteName: '햄스터 AI 스킬 라이브러리',
@@ -481,6 +508,12 @@ export const T = {
     sortScore: '평점',
     sortLikes: '좋아요',
     promptNote: '{{변수}}를 실제 내용으로 바꿔 사용하세요.',
+    /** 페이지 <meta> 설명 템플릿(플레이스홀더: {tag} {n} {tags}, fillPlaceholders로 채움) */
+    tagsMetaDesc: '#{tag} 태그가 붙은 {n}개 AI 스킬 — {tags}',
+    /** 플레이스홀더: {n} */
+    categoriesMetaDesc: '{n}개의 AI 스킬을 10개 용도 카테고리로 탐색 — 개발, 디자인, 글쓰기, 데이터, 사무 등. 복사해서 바로 사용하세요.',
+    /** 플레이스홀더: {category} {n} */
+    categoryMetaDesc: '"{category}" 카테고리의 {n}개 AI 스킬 — 용도 설명과 출처 저장소 포함, 원클릭 복사.',
   },
   ms: {
     siteName: 'Pustaka Kemahiran AI Hamster',
@@ -599,5 +632,11 @@ export const T = {
     sortScore: 'Skor',
     sortLikes: 'Suka',
     promptNote: 'Gantikan {{pembolehubah}} dengan kandungan sebenar sebelum guna.',
+    /** Templat huraian <meta> halaman (pemegang tempat: {tag} {n} {tags}, diisi oleh fillPlaceholders) */
+    tagsMetaDesc: '{n} kemahiran AI bertag #{tag} — {tags}',
+    /** Pemegang tempat: {n} */
+    categoriesMetaDesc: 'Layari {n} kemahiran AI merentas 10 kategori kes penggunaan — pembangunan, reka bentuk, penulisan, data, pejabat dan banyak lagi. Salin & terus guna.',
+    /** Pemegang tempat: {category} {n} */
+    categoryMetaDesc: '{n} kemahiran AI dalam kategori "{category}" — lengkap dengan penerangan tujuan dan repositori sumber. Salin satu klik.',
   },
 } as const
