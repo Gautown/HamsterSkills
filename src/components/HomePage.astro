@@ -114,6 +114,17 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
             </button>
           ))}
         </div>
+        {/*
+          版权声明：贴在分类栏底部。
+          原文是一个 <p> 内含空行分段，这里拆成两段 <p>，
+          否则空行会被 HTML 折叠掉、两段法律文本挤成一块。
+          窄屏下随折叠面板一起在「分类」按钮展开时出现。
+        */}
+        <div class="copyright">
+          <h3>{t.copyrightTitle}</h3>
+          <p>{t.copyrightBody}</p>
+          <p>{t.copyrightLaw}</p>
+        </div>
       </aside>
 
       <div class="grid-main">

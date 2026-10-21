@@ -855,6 +855,39 @@ h2 {
   padding-left: 10px;
 }
 
+/*
+ * 版权声明：左侧分类栏底部的说明块。
+ * 分隔线 + 小字号弱化色，与筛选区形成「工具 / 声明」的层级差；
+ * 窄屏折叠面板展开时同样出现（见下方断点里的内边距归零）。
+ */
+.copyright {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.copyright h3 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 8px;
+  padding-left: 10px;
+}
+
+.copyright p {
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--muted);
+  margin: 0 0 8px;
+  padding-left: 10px;
+}
+
+.copyright p:last-child {
+  margin-bottom: 0;
+}
+
 .grid-main {
   min-width: 0;
 }
@@ -908,7 +941,9 @@ h2 {
     display: block;
   }
 
-  .filter-title {
+  .filter-title,
+  .copyright h3,
+  .copyright p {
     padding-left: 0;
   }
 }

@@ -42,6 +42,11 @@ export const T = {
     navMenu: '打开菜单',
     sidebarTitle: '分类筛选',
     sidebarToggle: '分类',
+    copyrightTitle: '版权声明',
+    copyrightBody:
+      '本站尊重网络文件合法版权，所提供下载的资源均为GitHub公开仓库，仅供学习和研究使用。如有侵犯您的版权，欢迎联系我们，本站将立即改正。',
+    copyrightLaw:
+      '根据《计算机软件保护条例》第二章第十七条：为了学习和研究软件内含的设计思想和原理，通过安装、显示、传输或者存储软件等方式使用软件的，可不经软件著作权人许可，不支付报酬。',
     tagsTitle: '技能标签',
     tagsSub: '按标签浏览全部技能',
     backTags: '返回标签',
@@ -153,6 +158,11 @@ export const T = {
     navMenu: 'Open menu',
     sidebarTitle: 'Filter by category',
     sidebarToggle: 'Category',
+    copyrightTitle: 'Copyright notice',
+    copyrightBody:
+      'This site respects the lawful copyright of online works. All downloadable resources are public GitHub repositories, provided for learning and research purposes only. If any content infringes your copyright, please contact us and we will correct it immediately.',
+    copyrightLaw:
+      'Under Article 17, Chapter 2 of the Regulations on Computer Software Protection of the People’s Republic of China: for the purpose of learning and studying the design ideas and principles contained in the software, the software may be used by installing, displaying, transmitting or storing it, without the permission of, or payment of remuneration to, the copyright owner.',
     tagsTitle: 'Skill tags',
     tagsSub: 'Browse all skills by tag',
     backTags: 'Back to tags',
