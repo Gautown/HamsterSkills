@@ -197,10 +197,8 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
       */}
       <details class="nav-drop lang-drop" id="nav-lang">
         <summary class="lang-toggle" aria-label={t.langSwitchLabel} title={t.langSwitchLabel}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M3 12h18M12 3a14 14 0 010 18a14 14 0 010-18z" />
-          </svg>
+          {/* 按钮图标 = 当前语言的旗帜（而非通用地球图标），让用户一眼看到自己在哪个语言 */}
+          <span class="flag" set:html={flagOf(lang)} />
         </summary>
         <div class="nav-drop-menu lang-menu">
           {langLinks.map(l => (
@@ -286,10 +284,7 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
         */
         <details class="nav-drop lang-drop lang-drop-mobile">
           <summary class="lang-toggle" aria-label={t.langSwitchLabel} title={t.langSwitchLabel}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M3 12h18M12 3a14 14 0 010 18a14 14 0 010-18z" />
-            </svg>
+            <span class="flag" set:html={flagOf(lang)} />
           </summary>
           <div class="nav-drop-menu lang-menu">
             {langLinks.map(l => (

@@ -2026,6 +2026,30 @@ h2 {
 }
 
 /*
+ * 语言按钮内的「当前语言旗帜」。
+ * 地球图标是描边风格（上面的 fill:none / stroke:currentColor），
+ * 旗帜是纯色填充图形：以下规则以更高特异度（.lang-toggle .flag svg）
+ * 清掉继承来的描边，并按 3:2 裁圆角。尺寸比菜单项里的 20px 略小，
+ * 与 32px 方按钮留出呼吸感；描边阴影让白底旗帜（韩/日系）在浅色
+ * 主题下也有轮廓。
+ */
+.lang-toggle .flag {
+  display: inline-flex;
+  width: 18px;
+  aspect-ratio: 3 / 2;
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.lang-toggle .flag svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  stroke: none;
+}
+
+/*
  * 日/月图标的显隐完全交给 CSS，脚本不参与。
  * 需覆盖四种情况：显式深色 / 显式浅色 / 未选择且系统深色 / 未选择且系统浅色。
  * 用户没手动选过时 html 上没有 data-theme，故用 :not([data-theme='light']) 兜住。
