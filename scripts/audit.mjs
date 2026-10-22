@@ -88,7 +88,35 @@ if (missing.length > 0) {
 }
 
 /*
- * 技能级门槛汇总（SK1 正文过薄 / SK2 无描述 / SK3 跨仓重复 / SK4 整仓近全废）。
+ * AI 质量审查记忆库汇总（第四级判定，由 ai-classify 在独立步骤写入）。
+ *
+ * 只报告规模与比例，不参与失败判定 —— AI 不可用（未配密钥/限流）时
+ * 记忆库缺失或全为「未筛查」都是正常降级，站点照常构建（未判定=放行）。
+ */
+console.log('=== ai screening ===')
+try {
+  const aiFile = root + '/.cache/ai-classify.json'
+  if (fs.existsSync(aiFile)) {
+    const ai = JSON.parse(fs.readFileSync(aiFile, 'utf8'))
+    const entries = Object.values(ai?.entries ?? {})
+    let keep = 0
+    let drop = 0
+    let none = 0
+    for (const e of entries) {
+      if (e?.quality === 'keep') keep++
+      else if (e?.quality === 'drop') drop++
+      else none++
+    }
+    console.log(`memory: ${entries.length} 条 | keep ${keep} / drop ${drop} / 未筛查 ${none}`)
+  } else {
+    console.log('（无记忆库：AI 审查未运行或密钥未配置）')
+  }
+} catch (error) {
+  console.log(`（记忆库读取失败：${error.message}）`)
+}
+
+/*
+ * 技能级门槛汇总（SK1 正文过薄 / SK2 无描述 / SK3 跨仓重复 / SK4 整仓近全废 / AI1 AI 审查淘汰）。
  *
  * 被技能级淘汰的技能不影响覆盖率 —— 它们所在仓库的语料缓存都完好，
  * 是「主动不收」而非「拿不到」。这里只做观察性汇总，不作为失败条件：

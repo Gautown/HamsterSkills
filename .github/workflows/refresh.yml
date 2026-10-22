@@ -37,6 +37,9 @@ env:
   AI_API_BASE: ${{ vars.AI_API_BASE || 'https://api.agnes-ai.cn/v1' }}
   AI_API_KEY: ${{ secrets.AI_API_KEY }}
   AI_MODEL: ${{ vars.AI_MODEL || 'agnes-3.0-flash' }}
+  # 技能级 AI 质量审查开关：设为 '0' = 影子模式（判定照常记录但不删技能）。
+  # 走 vars 是为了应急时能在 Settings → Variables 直接切换，无需改代码。
+  SKILLS_AI_SCREEN: ${{ vars.SKILLS_AI_SCREEN || '1' }}
 
 jobs:
   refresh:
@@ -100,9 +103,12 @@ jobs:
       - name: 构建（写入技能清单）
         run: npm run build
 
-      # ---- AI 分类：读清单 → 写记忆库 ----
+      # ---- AI 判定（分类 + 质量审查）：读清单 → 写记忆库 ----
       # 记忆库命中的条目零成本，只有新增或正文变更的才调用 API。
-      # 未配置 AI_API_KEY 或调用失败时脚本自行跳过，规则层分类照常生效。
+      # 未配置 AI_API_KEY 时脚本自行跳过（exit 0），规则层照常生效；
+      # 但「全部条目失败」（密钥失效/服务商故障）会 exit 1 拦下部署 ——
+      # 失败必须可见，不能静默发布一轮没有 AI 判定的站点。
+      # 质量判定为 drop 的技能由第二次构建硬删除（SKILLS_AI_SCREEN=0 可关）。
       - name: AI 分类
         # pipefail：管道的退出码默认取自最后一个命令（tee），
         # 那样 ai-classify 崩了也会被当成成功。日志照样留存，但失败必须传出去。

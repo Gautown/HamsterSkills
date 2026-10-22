@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AI 分类：为聚合进来的 skill 调用 LLM 判定分类，结果写入记忆库。
+ * AI 分类 + 质量审查：为聚合进来的 skill 调用 LLM 判定分类与质量，结果写入记忆库。
  *
  * 用法：
  *   npm run build                  # 先构建：loader 会在结束时写出技能清单
@@ -19,24 +19,32 @@
  * 设计要点（这些取值均来自对该接口的实测，不是猜测）：
  *   1. **不传 response_format** —— 该模型在 json_object 模式下会忽略「输出数组」的要求，
  *      只返回单个对象，导致一批 20 条只能解析出 1 条。不传时 20/20 全部正常。
- *   2. **max_tokens 留足** —— 20 条分类实测约需 1000 tokens，设 900 会被截断成空字符串。
- *   3. **temperature 0** —— 保证同样输入得到同样输出，分类结果可复现。
- *   4. **记忆化按 skill id + 内容 sha** —— 上游没改动的 skill 永远不重复付费。
+ *   2. **max_tokens 留足** —— 双输出（分类 + 质量 + 理由）后 20 条实测需更多，
+ *      设 2400；截断会直接判为整批失败。
+ *   3. **temperature 0** —— 保证同样输入得到同样输出，判定结果可复现。
+ *   4. **记忆化按 skill id + 内容 sha + prompt 版本** —— 上游没改动、判定口径
+ *      没变动的 skill 永远不重复付费；口径升级（AI_PROMPT_VERSION 递增）时
+ *      旧条目自动进入回填，见 isAiFresh。
  *   5. **失败降级** —— 批量解析失败时自动拆成单条重试；仍失败则跳过该条，
  *      保留规则层结果，绝不阻塞每日同步。
  *   6. **输入来自 loader 写出的技能清单**（.cache/skills-remote/_manifest.json），
  *      而不是另行爬取的语料。清单里的 id 与记忆库的键同源，
  *      所以 AI 记下的结果一定能被下一次构建查到，不会出现「白花钱」。
+ *   7. **质量审查的输入 = 名称 + 描述 + 正文摘录**（正文从仓库语料缓存按 sha
+ *      取前 300 字符；取不到时退化为仅描述）。判定为 drop 的技能由 loader
+ *      在构建时硬删除（不进页面/索引/清单），可用 SKILLS_AI_SCREEN=0 一键关闭。
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { classifySkill, CATEGORY_KEYS } from '../src/lib/classify.mjs'
 import {
   AI_CACHE_FILE,
+  AI_PROMPT_VERSION,
   SKILL_MANIFEST_FILE,
   aiCacheStats,
+  isAiFresh,
   loadAiCache,
-  recordAiCategory,
+  recordAiResult,
   saveAiCache,
 } from '../src/lib/ai-cache.mjs'
 import { RateLimitError, createThrottle, isRateLimit, parseRetryAfter, withRateLimitRetry } from '../src/lib/rate-limit.mjs'
@@ -55,7 +63,8 @@ const CONFIG = {
   apiKey: process.env.AI_API_KEY || '',
   model: process.env.AI_MODEL || 'agnes-3.0-flash',
   batchSize: 20,
-  maxTokens: 1600,
+  /** 双输出（分类 + 质量 + 理由）后 20 条实测需要更多；1600 会偶发截断 */
+  maxTokens: 2400,
   timeoutMs: 120_000,
   retries: 2,
   /** 撞到服务商速率限制后的重试次数（每次指数退避） */
@@ -83,10 +92,10 @@ function readArg(name) {
 
 /**
  * 读取 loader 写出的技能清单。
- * 只保留 {id, sha, description} 三项，损坏条目直接丢弃——
+ * 保留 {id, sha, description, repo}；损坏条目直接丢弃——
  * 清单缺失不该让整轮分类失败，规则层结果照常生效。
  *
- * @returns {Array<{id: string, sha: string, description: string}>}
+ * @returns {Array<{id: string, sha: string, description: string, repo: string}>}
  */
 function readManifestSkills() {
   let parsed
@@ -107,22 +116,60 @@ function readManifestSkills() {
       id: item.id,
       sha: item.sha,
       description: typeof item.description === 'string' ? item.description : '',
+      repo: typeof item.repo === 'string' ? item.repo : '',
     })
   }
   return out
+}
+
+/**
+ * 正文摘录索引：repo → (sha → 正文前 300 字符)。
+ *
+ * 质量审查如果只看描述，会漏掉「描述写得漂亮、正文是空壳」这类技能
+ * （描述由作者提供，正文才是实际交付物）。正文按 sha 从仓库语料缓存里取，
+ * 不产生任何网络请求；缓存缺失时返回空串，判定退化为仅描述。
+ */
+const REPO_CACHE_DIR = path.join(ROOT, '.cache', 'skills-remote')
+const repoBodies = new Map()
+function bodyExcerpt(repo, sha) {
+  if (!repo || !sha) return ''
+  let index = repoBodies.get(repo)
+  if (index === undefined) {
+    index = new Map()
+    try {
+      const file = path.join(REPO_CACHE_DIR, repo.replace('/', '__') + '.json')
+      const blob = JSON.parse(fs.readFileSync(file, 'utf8'))
+      for (const v of Object.values(blob?.files ?? {})) {
+        if (v && typeof v.sha === 'string' && typeof v.body === 'string') {
+          index.set(v.sha, v.body.slice(0, 300).replace(/\s+/g, ' ').trim())
+        }
+      }
+    } catch {
+      /* 缓存缺失：空索引，退化为仅描述判定 */
+    }
+    repoBodies.set(repo, index)
+  }
+  return index.get(sha) ?? ''
 }
 
 const stats = {
   started: Date.now(),
   total: 0,
   fromCache: 0,
+  /** sha 一致但 prompt 版本过旧（缺质量判定），将自动回填 */
+  stale: 0,
   toClassify: 0,
   done: 0,
   failed: 0,
   requests: 0,
   tokens: 0,
   changed: 0,
+  /** 本次判定的质量分布 */
+  kept: 0,
+  dropped: 0,
 }
+/** drop 的抽样（含理由），运行结束时打印供人工复核 */
+const dropSamples = []
 
 function log(msg) {
   console.log(`[ai +${((Date.now() - stats.started) / 1000).toFixed(1)}s] ${msg}`)
@@ -130,22 +177,34 @@ function log(msg) {
 
 /* ------------------------------ AI 客户端 ------------------------------ */
 
-const SYSTEM_PROMPT = `你是 skill 分类器。把技能归入以下 10 个分类之一：
+const SYSTEM_PROMPT = `你是 skill 质量审查器 + 分类器。对每个技能同时做两件事：
+
+一、分类 category：归入以下 10 个分类之一（只依据技能的功能，不要依据技术实现）：
 ${CATEGORY_KEYS.join(', ')}
 
-规则：
-- 只依据技能的功能判断，不要依据它使用了什么技术实现
-- 只输出 JSON 数组，不要任何解释文字
-- 格式：[{"i":序号,"category":"分类"}]`
+二、质量判定 q：判 "drop" 当技能属于以下任一类（口径偏激进，但要给出证据）：
+- 不是真实可用的技能：模板、占位符、测试夹具、示例骨架、目录索引
+- 空洞无实质内容：只有标题/口号/泛泛而谈，无任何可执行信息
+- 纯营销或引流：整体像仓库宣传、自我推销，不是技能说明
+- 过时或未完成：明确废弃、TODO 占坑、内容残缺无法使用
+- 质量平庸：表述混乱、自相矛盾、无法照着执行，或与通用常识重复无增量价值
+否则判 "keep"。证据必须来自材料本身；材料不足以判断时选 "keep"。
+
+只输出 JSON 数组，不要任何解释文字
+格式：[{"i":序号,"category":"分类","q":"keep或drop","why":"drop 时给出≤60字的具体证据，keep 时为空字符串"}]`
 
 /**
- * 调用一次分类接口
- * @param {Array<{i:number,name:string,desc:string}>} items
- * @returns {Promise<{map: Record<number,string>, tokens: number}>}
+ * 调用一次判定接口（分类 + 质量双输出）
+ * @param {Array<{i:number,name:string,desc:string,excerpt:string}>} items
+ * @returns {Promise<{map: Record<number,{category:string,quality:string,why:string}>, tokens: number}>}
  */
 async function classifyBatch(items) {
   const lines = items
-    .map(it => `${it.i}. ${it.name} — ${String(it.desc).slice(0, 200).replace(/\s+/g, ' ')}`)
+    .map(it => {
+      const desc = String(it.desc).slice(0, 200).replace(/\s+/g, ' ')
+      const excerpt = String(it.excerpt ?? '').slice(0, 260)
+      return `${it.i}. ${it.name} — ${desc}\n   正文摘录：${excerpt || '(无正文或缓存未命中)'}`
+    })
     .join('\n')
 
   const res = await fetch(`${CONFIG.apiBase}/chat/completions`, {
@@ -180,15 +239,17 @@ async function classifyBatch(items) {
   if (finish === 'length') throw new Error('输出被 max_tokens 截断（考虑调小批次或调大 max_tokens）')
   if (!content.trim()) throw new Error('模型返回空内容')
 
-  return { map: parseCategoryMap(content, items.length), tokens }
+  return { map: parseResultMap(content, items.length), tokens }
 }
 
 /**
- * 解析模型返回的 JSON 数组，容错处理 ```json 包裹与前后杂句
+ * 解析模型返回的 JSON 数组，容错处理 ```json 包裹与前后杂句。
+ * 每个条目要求 category 与 q 同时合法 —— 缺质量判定的条目视为未完成
+ * （不写记忆库），下一次运行会重新调用。
  * @param {string} content
  * @param {number} expected
  */
-function parseCategoryMap(content, expected) {
+function parseResultMap(content, expected) {
   let text = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '')
   const start = text.indexOf('[')
   const end = text.lastIndexOf(']')
@@ -198,20 +259,23 @@ function parseCategoryMap(content, expected) {
   const parsed = JSON.parse(text)
   if (!Array.isArray(parsed)) throw new Error('解析结果不是数组')
 
-  /** @type {Record<number,string>} */
+  /** @type {Record<number,{category:string,quality:'keep'|'drop',why:string}>} */
   const map = {}
   let valid = 0
   for (const item of parsed) {
     if (!item || typeof item.i !== 'number') continue
     const cat = typeof item.category === 'string' ? item.category.trim() : ''
     if (!CATEGORY_KEYS.includes(cat)) continue
-    map[item.i] = cat
+    const q = item.q === 'drop' ? 'drop' : item.q === 'keep' ? 'keep' : ''
+    if (!q) continue
+    const why = typeof item.why === 'string' ? item.why.trim().slice(0, 120) : ''
+    map[item.i] = { category: cat, quality: q, why: q === 'drop' ? why : '' }
     valid++
   }
   // 一条都没解析出来视为失败，交给调用方降级处理
-  if (valid === 0) throw new Error(`全部 ${parsed.length} 条分类均非法`)
+  if (valid === 0) throw new Error(`全部 ${parsed.length} 条判定均非法`)
   if (valid < expected) {
-    // 部分成功也算成功，缺失的条目由调用方退回规则层
+    // 部分成功也算成功；缺失条目不写记忆库，下次运行重新判定
     console.warn(`  ⚠ 仅解析出 ${valid}/${expected} 条，缺失条目将保留规则层结果`)
   }
   return map
@@ -227,13 +291,13 @@ async function classifyWithFallback(item) {
       const { map, tokens } = await classifyBatch([{ ...item, i: 0 }])
       stats.requests++
       stats.tokens += tokens
-      const cat = map[0]
-      if (cat) return cat
+      const result = map[0]
+      if (result) return result
     } catch (error) {
       // 限流时不再徒劳重试：交给下一批次/下一次运行
       if (isRateLimit(error)) return undefined
       if (attempt === CONFIG.retries) {
-        console.warn(`  ⚠ ${item.name} 分类失败：${error.message}`)
+        console.warn(`  ⚠ ${item.name} 判定失败：${error.message}`)
         return undefined
       }
       await sleep(800 * (attempt + 1))
@@ -288,7 +352,8 @@ async function main() {
   if (STATUS_ONLY) {
     const s = aiCacheStats(cache)
     console.log(`记忆库: ${path.relative(ROOT, CACHE_PATH)}`)
-    console.log(`已记录: ${s.total} 条 | 累计 tokens: ${s.tokens} | 最近分类: ${s.lastAt || '—'}`)
+    console.log(`已记录: ${s.total} 条 | 累计 tokens: ${s.tokens} | 最近判定: ${s.lastAt || '—'}`)
+    console.log(`质量判定: keep ${s.quality.keep} / drop ${s.quality.drop} / 未筛查 ${s.quality.unscreened}（当前 prompt 版本 v${AI_PROMPT_VERSION}）`)
     console.log('分类分布:')
     for (const [k, v] of Object.entries(s.distribution).sort((a, b) => b[1] - a[1])) {
       console.log(`  ${k.padEnd(11)} ${v}`)
@@ -314,17 +379,27 @@ async function main() {
   }
   stats.total = skills.length
 
-  // 只处理记忆库里没有「同 sha 记录」的条目
+  /*
+   * 只处理「当前 prompt 版本下已完成判定」之外的条目。
+   * isAiFresh 要求 sha 一致 + 版本一致 + 分类与质量都在 ——
+   * 老条目（没有质量判定 / 是旧版 prompt 产出）自动进入回填，
+   * 不需要手动清库；sha 一致但版本过旧的单独计数，便于观察回填规模。
+   */
   const pending = []
   for (const s of skills) {
+    if (isAiFresh(cache, s.id, s.sha, AI_PROMPT_VERSION)) {
+      stats.fromCache++
+      continue
+    }
     const hit = cache.entries[s.id]
-    if (hit && hit.sha === s.sha) stats.fromCache++
-    else pending.push(s)
+    if (hit && hit.sha === s.sha) stats.stale++
+    pending.push(s)
   }
   stats.toClassify = LIMIT > 0 ? Math.min(pending.length, LIMIT) : pending.length
 
-  log(`总计 ${stats.total} 条 | 已记忆化 ${stats.fromCache} 条 | 待分类 ${stats.toClassify} 条`)
-  log(`模型 ${CONFIG.model} | 批次 ${CONFIG.batchSize} 条 | 并发 ${CONCURRENCY}`)
+  log(`总计 ${stats.total} 条 | 已记忆化 ${stats.fromCache} 条 | 待判定 ${stats.toClassify} 条` +
+    (stats.stale > 0 ? `（其中 ${stats.stale} 条为旧版结果回填）` : ''))
+  log(`模型 ${CONFIG.model} | 批次 ${CONFIG.batchSize} 条 | 并发 ${CONCURRENCY} | prompt v${AI_PROMPT_VERSION}`)
 
   if (stats.toClassify === 0) {
     log('无需调用 API，全部条目已有记忆化结果')
@@ -351,8 +426,10 @@ async function main() {
       i: idx,
       name: s.id,
       desc: s.description || s.id,
+      excerpt: bodyExcerpt(s.repo, s.sha),
     }))
 
+    /** @type {Record<number,{category:string,quality:'keep'|'drop',why:string}>} */
     let map = {}
     let tokens = 0
     try {
@@ -366,7 +443,7 @@ async function main() {
         /*
          * 退避用尽仍被限流：放弃这批，但**不要**降级单条。
          * 单条重试会把 20 条变成 20 个请求，在限流期间无异于火上浇油。
-         * 这些条目下次运行会继续处理（记忆库按 id+sha，未成功的不会留下记录）。
+         * 这些条目下次运行会继续处理（记忆库按 id+sha+版本，未成功的不会留下记录）。
          */
         stats.failed += batch.length
         console.warn(`  退避后仍被限流，跳过本批 ${batch.length} 条（下次运行继续）`)
@@ -374,8 +451,8 @@ async function main() {
         // 解析失败等普通错误：拆成单条重试，尽量不丢条目
         console.warn(`  批次失败（${error.message}），降级为单条重试 ${batch.length} 条`)
         for (const item of items) {
-          const cat = await classifyWithFallback(item)
-          if (cat) map[item.i] = cat
+          const result = await classifyWithFallback(item)
+          if (result) map[item.i] = result
         }
       }
     }
@@ -383,13 +460,31 @@ async function main() {
     // 写回记忆库：只有内容没变的才记，避免覆盖更新版本
     for (const item of items) {
       const s = batch[item.i]
-      const cat = map[item.i]
-      if (!cat) {
+      const result = map[item.i]
+      if (!result) {
         stats.failed++
         continue
       }
-      recordAiCategory(cache, s.id, s.sha, cat, tokens ? Math.round(tokens / items.length) : undefined)
-      if (s.data?.category !== cat) stats.changed++
+      const prev = cache.entries[s.id]
+      recordAiResult(
+        cache,
+        s.id,
+        s.sha,
+        { category: result.category, quality: result.quality, why: result.why, p: AI_PROMPT_VERSION },
+        tokens ? Math.round(tokens / items.length) : undefined,
+      )
+      if (
+        prev && prev.sha === s.sha &&
+        typeof prev.category === 'string' && prev.category !== result.category
+      ) {
+        stats.changed++
+      }
+      if (result.quality === 'drop') {
+        stats.dropped++
+        if (dropSamples.length < 8) dropSamples.push({ id: s.id, why: result.why })
+      } else {
+        stats.kept++
+      }
       stats.done++
     }
 
@@ -407,15 +502,20 @@ async function main() {
   console.log('----------------------------------------')
   console.log(`耗时        : ${elapsed}s`)
   console.log(`总条目      : ${stats.total}（已记忆化 ${stats.fromCache}）`)
-  console.log(`本次分类    : 成功 ${stats.done} / 失败 ${stats.failed}`)
+  console.log(`本次判定    : 成功 ${stats.done} / 失败 ${stats.failed}`)
+  console.log(`质量判定    : keep ${stats.kept} / drop ${stats.dropped}`)
   console.log(`分类发生变化: ${stats.changed} 条`)
   console.log(`API 请求    : ${stats.requests} 个，消耗 ${stats.tokens} tokens`)
   console.log(`记忆库      : ${path.relative(ROOT, CACHE_PATH)}（共 ${Object.keys(cache.entries).length} 条）`)
+  if (dropSamples.length > 0) {
+    console.log('drop 样例（前 8 条，供人工复核判定口径）:')
+    for (const s of dropSamples) console.log(`  ${s.id} — ${s.why || '（无理由）'}`)
+  }
   console.log('----------------------------------------')
 
   // 全部失败才算失败；部分失败保留规则结果即可继续
   if (stats.done === 0 && stats.toClassify > 0) {
-    console.error('[ai] 全部条目分类失败，保留规则层结果')
+    console.error('[ai] 全部条目判定失败，保留规则层结果')
     process.exit(1)
   }
 }

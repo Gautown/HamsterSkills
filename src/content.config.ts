@@ -196,6 +196,13 @@ const skills = defineCollection({
               requireDescription: env.SKILLS_REQUIRE_DESCRIPTION !== '0',
               repoJunkRatio: readOptionalRatio(env.SKILLS_REPO_JUNK_RATIO, 0.9),
             },
+      /*
+       * AI 质量审查（第四级判定）：ai-classify 步骤把 LLM 的 keep/drop
+       * 判定写进记忆库（分类 + 质量双输出，一次调用两用），构建时生效。
+       * SKILLS_AI_SCREEN=0 一键关闭（影子模式：判定照常记录但不拦截）。
+       * 记忆库缺失/条目过旧时自动放行——AI 不可用不影响站点构建。
+       */
+      aiScreen: env.SKILLS_AI_SCREEN !== '0',
       token: env.GITHUB_TOKEN,
       apiBase: env.GITHUB_API_BASE,
       rawBase: env.GITHUB_RAW_BASE,

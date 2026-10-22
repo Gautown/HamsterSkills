@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type { Loader, LoaderContext } from 'astro/loaders'
 import type { CategoryKey } from '../lib/categories'
 import { classifySkill } from '../lib/classify.mjs'
-import { AI_CACHE_FILE, SKILL_MANIFEST_FILE, loadAiCache, lookupAiCategory } from '../lib/ai-cache.mjs'
+import { AI_CACHE_FILE, AI_PROMPT_VERSION, SKILL_MANIFEST_FILE, loadAiCache, lookupAiCategory, lookupAiQuality } from '../lib/ai-cache.mjs'
 import type { AiCacheFile } from '../lib/ai-cache.mjs'
 import { deriveSkillId, skillDirectory } from '../lib/skill-id.mjs'
 import { isSkillFile } from '../lib/skill-file'
@@ -92,6 +92,12 @@ export interface GitHubSkillsOptions {
    * 作用于「仓库已通过、单个 SKILL.md 是否上站」，见 src/lib/skill-quality.ts。
    */
   skillGate?: SkillGateOptions
+  /**
+   * AI 质量审查（第四级判定，记忆库驱动）：ai-classify 写入的 drop 判定
+   * 在构建时硬删除对应技能。缺省开启；设 false 一键关闭（影子模式）。
+   * 记忆库缺失或条目版本过旧时自动放行（宁漏勿杀）。
+   */
+  aiScreen?: boolean
 }
 
 /* ------------------------------ 内部类型 ------------------------------ */
@@ -146,6 +152,8 @@ interface ResolvedOptions {
   cacheDir?: string | URL
   /** 技能级质量门槛；undefined = 不启用（loadRepo 用它做全部技能级判定） */
   skillGate?: SkillGateOptions
+  /** AI 质量审查开关；undefined/false = 不拦截（记忆库判定被忽略） */
+  aiScreen?: boolean
 }
 
 interface LoadRepoOptions extends ResolvedOptions {
@@ -291,6 +299,7 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
     token: options.token || undefined,
     cacheDir: options.cacheDir,
     skillGate: options.skillGate,
+    aiScreen: options.aiScreen,
   }
   const defaultSkip = options.defaultSkip ?? DEFAULT_SKIP
 
@@ -944,6 +953,32 @@ async function loadRepo(
         skipped++
         logger.warn(`[github-skills] ${cfg.repo}: 跳过 ${skill.dir || name}（id "${skill.id}" 已被本地或其他仓库占用）`)
         continue
+      }
+
+      /*
+       * AI 质量审查（第四级判定，记忆库驱动）。
+       *
+       * ai-classify 在 CI 的「AI 分类」步骤里为每个新增/变更技能调用一次
+       * LLM（分类 + 质量双输出），drop 判定在提交时点硬删除 —— 不产页、
+       * 不进索引、不进清单。三道放行阀：
+       *   - SKILLS_AI_SCREEN=0（opts.aiScreen=false）整体关闭
+       *   - 记忆库缺失 / 条目 sha 或 prompt 版本不匹配 → 视为未判定，放行
+       *   - 只在 store.has 之后、dedupe 之前拦截（被删的技能不占用去重名额）
+       */
+      if (opts.aiScreen !== false) {
+        const aiVerdict = lookupAiQuality(aiCache, skill.id, skill.entry.sha, AI_PROMPT_VERSION)
+        if (aiVerdict && aiVerdict.quality === 'drop') {
+          skipped++
+          state.skillGate.push({
+            repo: cfg.repo,
+            id: skill.id,
+            sha: skill.entry.sha,
+            code: 'AI1',
+            reason: aiVerdict.why || '未通过 AI 质量审查',
+            bodyChars: skill.entry.body.length,
+          })
+          continue
+        }
       }
 
       const data = await parseData({
