@@ -1638,30 +1638,6 @@ h2 {
   font-size: 12px;
 }
 
-/*
- * 无 prompt 时导出按钮独占整行。
- *
- * 这里踩过两个坑：
- *   1) .btn-row 是 grid（两列），原来的 flex: 1 1 100% 在 grid 子项上
- *      完全无效 —— 按钮一直只占半行，右侧空着。Grid 要用 grid-column。
- *   2) 双行卡片形态（.MD 小标 + 主文案）比下方安装 / GitHub 单行按钮
- *      高出约 16px，同一个动作区里三种高度显得按钮不一致。
- *      独占整行时改为单行宽条：与两个相邻按钮同宽、同高、同形态。
- *      （有 prompt 的「复制 + 导出」双卡片并排保持原样，那是另一个语境。）
- */
-.btn-row .side-btn2.full {
-  grid-column: 1 / -1;
-  flex-direction: row;
-  gap: 8px;
-  padding: 11px;
-}
-
-/* 单行形态下状态提示走行内，与带 prompt 的「-inline」分支行为一致 */
-.btn-row .side-btn2.full .export-status {
-  display: inline;
-  margin-left: 6px;
-}
-
 /* 评论（Giscus）面板：去掉正文表格/代码块的样式继承，避免影响 Giscus 自身布局 */
 .tab-content.discussion-panel {
   font-size: 14px;
@@ -1779,24 +1755,43 @@ h2 {
  * 失败提示必须与成功提示**视觉可区分**：只换文字的话，
  * 用户在一闪而过的 3 秒里未必来得及看清「复制失败」四个字，
  * 仍会当成成功。不加这个类就等于没做失败提示。
+ * 命令 chip 体积小，失败用扁平底色（卡片按钮用渐变保持既有视觉层级）。
  */
-.install-btn.is-failed,
-.copy-btn.is-failed {
+.copy-btn.is-failed,
+.copy-skill-btn.is-failed {
   background: linear-gradient(180deg, #fde3e4, #f8cdcf);
   color: #8c1d20;
 }
 
-:root[data-theme='dark'] .install-btn.is-failed,
-:root[data-theme='dark'] .copy-btn.is-failed {
+.cmd-chip.is-failed {
+  background: #fde3e4;
+  color: #8c1d20;
+  border-color: #f3b6b8;
+}
+
+:root[data-theme='dark'] .copy-btn.is-failed,
+:root[data-theme='dark'] .copy-skill-btn.is-failed {
   background: linear-gradient(180deg, #4a2224, #3a1a1c);
   color: #ff9ea1;
 }
 
+:root[data-theme='dark'] .cmd-chip.is-failed {
+  background: #4a2224;
+  color: #ff9ea1;
+  border-color: transparent;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .install-btn.is-failed,
-  :root:not([data-theme='light']) .copy-btn.is-failed {
+  :root:not([data-theme='light']) .copy-btn.is-failed,
+  :root:not([data-theme='light']) .copy-skill-btn.is-failed {
     background: linear-gradient(180deg, #4a2224, #3a1a1c);
     color: #ff9ea1;
+  }
+
+  :root:not([data-theme='light']) .cmd-chip.is-failed {
+    background: #4a2224;
+    color: #ff9ea1;
+    border-color: transparent;
   }
 }
 
@@ -1818,6 +1813,80 @@ h2 {
 .export-status-inline {
   display: inline;
   margin-left: 6px;
+}
+
+/*
+ * 安装菜单（详情页右栏）：安装按钮作 <details> 的 summary，展开为工具列表。
+ * 面板复用 .nav-drop-menu 的绝对定位（details 自身 position:relative，
+ * 锚定在按钮正下方），行内为「工具名 + 右侧两条命令 chip」。
+ * chip 点击复制命令：成功闪 ✓、失败闪 ✗ + 红色（见上方 .cmd-chip.is-failed）。
+ */
+.install-menu {
+  min-width: 264px;
+  padding: 10px;
+}
+
+.install-menu-title {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.install-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.install-tool {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.install-chips {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cmd-chip {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--foreground);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cmd-chip:hover {
+  background: var(--secondary);
+}
+
+.install-hint {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.install-caret {
+  opacity: 0.7;
+  transition: transform 0.18s;
+}
+
+.install-drop[open] .install-caret {
+  transform: rotate(180deg);
 }
 
 .github-cta {

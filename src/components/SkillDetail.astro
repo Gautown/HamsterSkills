@@ -5,9 +5,10 @@ import { tagSlug } from '../lib/tags'
 import CopyPrompt from './CopyPrompt.astro'
 import GiscusComments from './GiscusComments.astro'
 import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
-import { T, type Locale } from '../i18n/translations'
+import { T, fillPlaceholders, type Locale } from '../i18n/translations'
 import { baseOf } from '../lib/site-paths'
 import { usesZhContent } from '../lib/languages'
+import { buildInstallCommand, installSourceOf } from '../lib/install'
 
 interface Props {
   locale: Locale
@@ -62,6 +63,38 @@ const gradeLabel = d.grade
 const bodyView = renderSkillBodyForDisplay(entry.body)
 /** 正文是相对路径引用或占位符时，改用提示文案而不是渲染出无意义的路径 */
 const bodyIsPlaceholder = isPlaceholderBody(entry.body)
+
+/*
+ * 安装菜单（详见 docs/install-to-agents.md）。
+ *
+ * 安装源：远端技能 → 源仓库 tree URL（`npx skills add` 直接吃这种格式）；
+ * 本地技能 → 本站 /dl/<id>.md（构建期生成的规范 SKILL.md 下载通道）。
+ * 每行给两条命令（全局 -g / 项目），点击复制到剪贴板直接跑。
+ * agent 取值必须与 skills CLI 官方表一致（docs/agents.md），改动前先核对。
+ */
+const installSource = installSourceOf({
+  github: d.github,
+  id: entry.id,
+  origin: Astro.site?.origin,
+})
+const installTools: Array<{ label: string; agent?: string }> = [
+  { label: 'OpenCode', agent: 'opencode' },
+  { label: 'Claude Code', agent: 'claude-code' },
+  { label: 'Codex', agent: 'codex' },
+  { label: 'Cursor', agent: 'cursor' },
+  { label: 'VS Code · Copilot', agent: 'github-copilot' },
+  { label: 'Hermes Agent', agent: 'hermes-agent' },
+  { label: t.installGeneric },
+]
+const installRows = installSource
+  ? installTools.map(tool => ({
+      label: tool.label,
+      globalCmd: buildInstallCommand({ source: installSource, agent: tool.agent, global: true }),
+      projectCmd: buildInstallCommand({ source: installSource, agent: tool.agent, global: false }),
+    }))
+  : []
+/** WorkBuddy 无 CLI 通道：给可复制的手动安装指引（目录为社区实测，见 docs） */
+const workbuddyHint = fillPlaceholders(t.workbuddyHint, { name: entry.id })
 
 const fileGroups: { folder: string | null; items: string[] }[] = []
 for (const f of d.files ?? []) {
@@ -332,46 +365,66 @@ const skillMdText = [
       <div class="side-block">
         <div class="btn-row">
           {/*
-            「一键复制」只在有独立 prompt 文案时才有意义，而远端 skill 全部没有
-            prompt 字段——原先它不渲染、导出按钮却照常显示，按钮组因此只剩一个。
-            这里让导出按钮在无 prompt 时占满整行，视觉上不留空位。
+            文件操作对：复制 + 导出。
+            - 有 prompt（本地精选技能）：复制 = 复制 prompt（沿用 CopyPrompt 的
+              全局 .copy-btn 绑定，复制的是 prompt 框内容）
+            - 无 prompt（远端技能）：复制 = 复制 SKILL.md 全文（.copy-skill-btn，
+              由本组件脚本处理；不能复用 .copy-btn —— 那个选择器被 CopyPrompt
+              脚本全局接管，会去复制并不存在的 prompt 框）
           */}
           {d.prompt ? (
-            <>
-              <button class="copy-btn side-btn2" type="button" data-label={t.copy} data-copied={t.copied}>
-                <span class="btn-eyebrow">{t.oneClick}</span>
-                <span class="btn-main">{t.copy}</span>
-              </button>
-              <button class="export-btn side-btn2" type="button">
-                <span class="btn-eyebrow">.MD</span>
-                <span class="btn-main">{t.exportBtn}</span>
-                <span class="export-status export-status-inline" data-done={t.exported} aria-live="polite"></span>
-              </button>
-            </>
+            <button class="copy-btn side-btn2" type="button" data-label={t.copy} data-copied={t.copied}>
+              <span class="btn-eyebrow">{t.oneClick}</span>
+              <span class="btn-main">{t.copy}</span>
+            </button>
           ) : (
-            <button class="export-btn side-btn2 full" type="button">
-              <span class="btn-eyebrow">.MD</span>
-              <span class="btn-main">{t.exportBtn}</span>
-              <span class="export-status" data-done={t.exported} aria-live="polite"></span>
+            <button class="copy-skill-btn side-btn2" type="button" data-label={t.copy} data-copied={t.copied} data-failed={t.copyFailed}>
+              <span class="btn-eyebrow">{t.oneClick}</span>
+              <span class="btn-main">{t.copy}</span>
             </button>
           )}
+          <button class="export-btn side-btn2" type="button">
+            <span class="btn-eyebrow">.MD</span>
+            <span class="btn-main">{t.exportBtn}</span>
+            <span class="export-status export-status-inline" data-done={t.exported} aria-live="polite"></span>
+          </button>
         </div>
         {/*
-          图标与文案分成两个子元素：原先整块用 textContent 替换状态，
-          `&gt;_` 前缀会在首次点击后永久丢失，按钮外观与相邻按钮不一致。
-          现在只改 .install-btn-text 的文字。
+          安装菜单：安装按钮改作 <details> 的 summary，展开工具列表。
+          面板复用 .nav-drop 交互（Header 脚本的全局绑定：互斥开合 / 点外关闭 / Esc）。
+          每行两条命令 chip [全局/项目]，点击复制到剪贴板，粘进终端直接跑；
+          WorkBuddy 无 CLI 通道，给可复制的手动指引。
         */}
-        <button
-          class="install-btn"
-          type="button"
-          data-label={t.installBtn}
-          data-copied={t.copied}
-          data-failed={t.copyFailed}
-          aria-live="polite"
-        >
-          <span class="install-btn-icon" aria-hidden="true">&gt;_</span>
-          <span class="install-btn-text">{t.installBtn}</span>
-        </button>
+        {installRows.length > 0 && (
+          <details class="nav-drop install-drop">
+            <summary class="install-btn" aria-label={t.installMenuTitle}>
+              <span class="install-btn-icon" aria-hidden="true">&gt;_</span>
+              <span class="install-btn-text">{t.installBtn}</span>
+              <svg class="install-caret" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+                <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" />
+              </svg>
+            </summary>
+            <div class="nav-drop-menu install-menu">
+              <p class="install-menu-title">{t.installMenuTitle}</p>
+              {installRows.map(row => (
+                <div class="install-row">
+                  <span class="install-tool">{row.label}</span>
+                  <span class="install-chips">
+                    <button class="cmd-chip" type="button" data-cmd={row.globalCmd} data-label={t.installGlobal} title={row.globalCmd}>{t.installGlobal}</button>
+                    <button class="cmd-chip" type="button" data-cmd={row.projectCmd} data-label={t.installProject} title={row.projectCmd}>{t.installProject}</button>
+                  </span>
+                </div>
+              ))}
+              <div class="install-row">
+                <span class="install-tool">WorkBuddy</span>
+                <span class="install-chips">
+                  <button class="cmd-chip" type="button" data-cmd={workbuddyHint} data-label={t.copy} title={workbuddyHint}>{t.copy}</button>
+                </span>
+              </div>
+              <p class="install-hint">{t.installHint}</p>
+            </div>
+          </details>
+        )}
         {d.github && (
           <a class="github-cta" href={d.github} target="_blank" rel="noopener">▶ {t.githubLabel} ↗</a>
         )}
@@ -520,33 +573,43 @@ const skillMdText = [
     }
   }
 
-  /** 按钮文字闪一下再复原；只改文字节点，不动图标 */
-  function flashText(el: HTMLElement, text: string, ms = 1600) {
-    const label = el.querySelector<HTMLElement>('.install-btn-text')
-    const target = label ?? el
-    const original = target.textContent ?? ''
-    target.textContent = text
-    el.classList.toggle('is-failed', el.dataset.failed === text)
-    setTimeout(() => {
-      target.textContent = original
-      el.classList.remove('is-failed')
-    }, ms)
-  }
-
-  const installBtn = document.querySelector<HTMLElement>('.install-btn')
-  installBtn?.addEventListener('click', async () => {
+  /*
+   * 复制 SKILL.md 全文（.copy-skill-btn，远端技能、无 prompt 时显示）。
+   * 本地技能走 .copy-btn —— 那个选择器被 CopyPrompt 的脚本全局接管、
+   * 复制的是 prompt 框内容，两套职责不能混在一个选择器上。
+   * 只替换 .btn-main 的文字节点，图标（.btn-eyebrow）不动。
+   */
+  const copySkillBtn = document.querySelector<HTMLElement>('.copy-skill-btn')
+  copySkillBtn?.addEventListener('click', async () => {
     const ok = await copyText(mdText)
-    if (installBtn.dataset.flash) clearTimeout(Number(installBtn.dataset.flash))
-    const timer = setTimeout(() => {
-      if (installBtn.dataset.flash) delete installBtn.dataset.flash
-    }, 1700)
-    installBtn.dataset.flash = String(timer)
-    flashText(
-      installBtn,
-      ok ? installBtn.dataset.copied || 'Copied' : installBtn.dataset.failed || 'Failed',
-      ok ? 1600 : 3200,
-    )
+    const main = copySkillBtn.querySelector<HTMLElement>('.btn-main')
+    const original = copySkillBtn.dataset.label ?? (main?.textContent ?? '')
+    if (main) main.textContent = ok ? (copySkillBtn.dataset.copied || 'Copied') : (copySkillBtn.dataset.failed || 'Failed')
+    copySkillBtn.classList.toggle('is-failed', !ok)
+    setTimeout(() => {
+      if (main) main.textContent = original
+      copySkillBtn.classList.remove('is-failed')
+    }, ok ? 1600 : 3200)
   })
+
+  /*
+   * 安装菜单命令 chip（.cmd-chip）：复制命令并闪符号反馈。
+   * chip 太小放不下整句状态文案，成功显示 ✓、失败显示 ✗ + 红色标记，
+   * 几秒后恢复为 data-label（「全局 / 项目 / 复制」等原文）。
+   */
+  const cmdChips = Array.from(document.querySelectorAll<HTMLElement>('.cmd-chip'))
+  for (const chip of cmdChips) {
+    chip.addEventListener('click', async () => {
+      const ok = await copyText(chip.dataset.cmd ?? '')
+      const original = chip.dataset.label ?? (chip.textContent ?? '')
+      chip.textContent = ok ? '✓' : '✗'
+      chip.classList.toggle('is-failed', !ok)
+      setTimeout(() => {
+        chip.textContent = original
+        chip.classList.remove('is-failed')
+      }, ok ? 1400 : 2600)
+    })
+  }
 
   const exportBtn = document.querySelector<HTMLElement>('.export-btn')
   exportBtn?.addEventListener('click', () => {

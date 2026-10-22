@@ -41,7 +41,7 @@ test('★ 全源对齐：路由配置 = 语言注册表 = 词条 = 路径表 = �
 test('含占位符的描述模板五语言占位符集合一致', () => {
   // {tag} {n} {tags} 由 fillPlaceholders 填充；某语言漏一个占位符
   // 会渲染出带 {残留} 或缺失信息的 <meta> 描述。
-  const TEMPLATE_KEYS = ['tagsMetaDesc', 'categoriesMetaDesc', 'categoryMetaDesc']
+  const TEMPLATE_KEYS = ['tagsMetaDesc', 'categoriesMetaDesc', 'categoryMetaDesc', 'workbuddyHint']
   for (const key of TEMPLATE_KEYS) {
     const perLang = LANGS.map((lang) => ({
       lang,

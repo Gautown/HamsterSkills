@@ -5,7 +5,7 @@
 ## 特性
 
 - 10 个用途分类 + 1,200+ 标签索引；技能详情页中英双语
-- 一键复制 / 导出 `SKILL.md` / 一键安装，评分徽章、点赞与投票
+- 一键复制 / 导出 `SKILL.md` / **一键安装菜单**（复制命令装进 OpenCode、Claude Code、Codex、Cursor、Copilot、Hermes 等本地 AI 工具；本地技能走 `/dl` 下载通道），评分徽章、点赞与投票
 - 自动发现 GitHub 公开仓库（6 个主题并集、按 star 排序），按仓库缓存做**增量同步**
 - **双层自动分类**：规则层实时判定 + AI 层按需补正，结果记入记忆库，内容未变则零成本
 - 全站**流式聊天窗**（SSE），固定在视口右边缘，能结合当前技能回答
@@ -64,6 +64,8 @@ npm run build                 # 再构建一次，让判定当次生效
 | [docs/chat.md](docs/chat.md) | 全站聊天窗：SSE 协议、双重限额、上下文注入、回复的 Markdown 渲染与 XSS 防线 |
 | [docs/comments.md](docs/comments.md) | Giscus 评论接入 |
 | [docs/deploy-cloudflare.md](docs/deploy-cloudflare.md) | 部署与双 Worker 拆分 |
+| [docs/install-to-agents.md](docs/install-to-agents.md) | 一键安装通道：`npx skills add` 命令、各工具落盘目录、`/dl` 下载通道 |
+| [docs/skill-quality.md](docs/skill-quality.md) | 四层质量门槛（仓库级 Q1-Q3 / 技能级 SK1-SK4 / AI 审查 keep-drop） |
 | [docs/setup-cloudflare-secrets.md](docs/setup-cloudflare-secrets.md) | Secrets / Variables 配置清单 |
 
 ## 数据来源与合规

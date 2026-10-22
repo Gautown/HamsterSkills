@@ -4,3 +4,6 @@ Allow: /
 # 双站部署在同一域名下：中文站在根路径，英文站在 /en/*
 # （对应 wrangler.zh.jsonc 与 wrangler.en.jsonc 的两条 routes）
 Sitemap: https://skill.gautown.top/sitemap-index.xml
+
+# 安装下载通道：给 skills CLI 抓取 SKILL.md 用，搜索引擎无需索引原始 md
+Disallow: /dl/
