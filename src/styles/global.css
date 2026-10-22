@@ -1638,9 +1638,28 @@ h2 {
   font-size: 12px;
 }
 
-/* 无 prompt 时导出按钮独占整行，避免按钮组右侧留下空位 */
+/*
+ * 无 prompt 时导出按钮独占整行。
+ *
+ * 这里踩过两个坑：
+ *   1) .btn-row 是 grid（两列），原来的 flex: 1 1 100% 在 grid 子项上
+ *      完全无效 —— 按钮一直只占半行，右侧空着。Grid 要用 grid-column。
+ *   2) 双行卡片形态（.MD 小标 + 主文案）比下方安装 / GitHub 单行按钮
+ *      高出约 16px，同一个动作区里三种高度显得按钮不一致。
+ *      独占整行时改为单行宽条：与两个相邻按钮同宽、同高、同形态。
+ *      （有 prompt 的「复制 + 导出」双卡片并排保持原样，那是另一个语境。）
+ */
 .btn-row .side-btn2.full {
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
+  flex-direction: row;
+  gap: 8px;
+  padding: 11px;
+}
+
+/* 单行形态下状态提示走行内，与带 prompt 的「-inline」分支行为一致 */
+.btn-row .side-btn2.full .export-status {
+  display: inline;
+  margin-left: 6px;
 }
 
 /* 评论（Giscus）面板：去掉正文表格/代码块的样式继承，避免影响 Giscus 自身布局 */
