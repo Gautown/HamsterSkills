@@ -113,6 +113,20 @@ const readOptionalNumber = (value: string | undefined, fallback: number | undefi
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
 
+/**
+ * 读「比例」配置（0-1）。
+ *
+ * 与 readOptionalNumber 的差异：**0 表示显式关闭，返回 undefined**。
+ * 原因是危险的语义歧义：repoJunkRatio=0 字面含义是「有垃圾就整仓剔除」，
+ * 误传给全部仓库会瞬间清空站点；把 0 定义为关闭，让运维意图无歧义。
+ */
+const readOptionalRatio = (value: string | undefined, fallback: number): number | undefined => {
+  if (value == null || value.trim() === '') return fallback
+  const parsed = Number(value)
+  if (parsed === 0) return undefined
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
 const discoveryTopics = (
   env.SKILLS_TOPICS ?? 'agent-skills,claude-skills,claude-code-skills,opencode-skills,opencode-skill,hermes-skills'
 )
@@ -156,6 +170,32 @@ const skills = defineCollection({
       perRepoMaxSkills: readNumber(env.SKILLS_MAX_SKILLS_PER_REPO, 200),
       // 总量上限：12000 以容纳 Claude / OpenCode / Hermes 等多生态聚合（300 仓发现列表）
       maxSkills: readNumber(env.SKILLS_MAX_SKILLS, 12000),
+      /*
+       * 技能级质量门槛（第三级判定）：仓库通过 Q1-Q3 之后，
+       * 逐个检查 SKILL.md 是否值得上站。阈值来自 2026-10 的全量分布分析
+       * （6181 条在站技能，见 docs/skill-quality.md）：
+       *   - 正文 p25 = 2483 字符；<2000 的 1316 条里集中了符号链接指针、
+       *     测试残留（"First skill" 9 字符）、模板文件等
+       *   - 无 frontmatter.description 的 298 条会把描述退化成
+       *     目录名拼接（"Cmd Cs Aeo"），一律不上站
+       *   - 仓内失效占比 >90% 的整仓剔除（实测命中 7 仓，
+       *     alirezazvani/claude-skills 186/186 全是符号链接指针）
+       * 被拒技能不进清单 → 不产页、不进索引、AI 分类不为它花钱。
+       *
+       * 开关：
+       *   SKILLS_SKILL_GATE=0         关闭全部技能级判定
+       *   SKILLS_MIN_BODY_CHARS       正文下限（默认 2000；传 0 关闭该项）
+       *   SKILLS_REQUIRE_DESCRIPTION  设 0 允许无描述上站
+       *   SKILLS_REPO_JUNK_RATIO      整仓剔除比例（默认 0.9；传 0 关闭该项）
+       */
+      skillGate:
+        env.SKILLS_SKILL_GATE === '0'
+          ? undefined
+          : {
+              minBodyChars: readOptionalNumber(env.SKILLS_MIN_BODY_CHARS, 2000),
+              requireDescription: env.SKILLS_REQUIRE_DESCRIPTION !== '0',
+              repoJunkRatio: readOptionalRatio(env.SKILLS_REPO_JUNK_RATIO, 0.9),
+            },
       token: env.GITHUB_TOKEN,
       apiBase: env.GITHUB_API_BASE,
       rawBase: env.GITHUB_RAW_BASE,

@@ -87,6 +87,44 @@ if (missing.length > 0) {
   )
 }
 
+/*
+ * 技能级门槛汇总（SK1 正文过薄 / SK2 无描述 / SK3 跨仓重复 / SK4 整仓近全废）。
+ *
+ * 被技能级淘汰的技能不影响覆盖率 —— 它们所在仓库的语料缓存都完好，
+ * 是「主动不收」而非「拿不到」。这里只做观察性汇总，不作为失败条件：
+ * 淘汰量随上游内容自然波动，拦住它只会让流水线在别人改 README 时变红。
+ */
+console.log('=== skill gate ===')
+try {
+  const gateFile = dir + '/_skill-gate.jsonl'
+  if (fs.existsSync(gateFile)) {
+    const tally = {}
+    const droppedRepos = new Set()
+    let total = 0
+    for (const line of fs.readFileSync(gateFile, 'utf8').split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const rec = JSON.parse(line)
+        total++
+        tally[rec.code] = (tally[rec.code] ?? 0) + 1
+        if (rec.code === 'SK4' && typeof rec.repo === 'string') droppedRepos.add(rec.repo)
+      } catch { /* 单行损坏不应让审计崩掉 */ }
+    }
+    const breakdown = Object.entries(tally)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([code, n]) => `${code} ${n}`)
+      .join(' / ')
+    console.log(`cut: ${total}（${breakdown}）`)
+    if (droppedRepos.size) {
+      console.log(`dropped repos (SK4): ${droppedRepos.size} 个 — ${[...droppedRepos].slice(0, 8).join(', ')}`)
+    }
+  } else {
+    console.log('（无日志：技能级门槛未启用，或本轮没有任何淘汰）')
+  }
+} catch (error) {
+  console.log(`（技能级门槛日志读取失败：${error.message}）`)
+}
+
 /* 限流降级：loader 把状态写进了清单，这里程序化读出来 */
 console.log('=== build health ===')
 try {

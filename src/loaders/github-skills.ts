@@ -8,6 +8,7 @@ import { AI_CACHE_FILE, SKILL_MANIFEST_FILE, loadAiCache, lookupAiCategory } fro
 import type { AiCacheFile } from '../lib/ai-cache.mjs'
 import { deriveSkillId, skillDirectory } from '../lib/skill-id.mjs'
 import { isSkillFile } from '../lib/skill-file'
+import { createDedupeFilter, judgeRepoOutcome, judgeSkill, type SkillGateOptions, type SkillVerdict } from '../lib/skill-quality'
 import { judgeMetadata, judgeProbe, estimateTokens, toJsonLine, type RepoMeta, type RepoProbe, type Verdict, type QualityGate } from '../lib/triage'
 
 /* ------------------------------ 公共类型 ------------------------------ */
@@ -86,6 +87,11 @@ export interface GitHubSkillsOptions {
   perRepoMaxSkills?: number
   /** 所有仓库通用的忽略目录 */
   defaultSkip?: string[]
+  /**
+   * 技能级质量门槛（第三级判定）；缺省不启用。
+   * 作用于「仓库已通过、单个 SKILL.md 是否上站」，见 src/lib/skill-quality.ts。
+   */
+  skillGate?: SkillGateOptions
 }
 
 /* ------------------------------ 内部类型 ------------------------------ */
@@ -138,6 +144,8 @@ interface ResolvedOptions {
   rawBase: string
   token?: string
   cacheDir?: string | URL
+  /** 技能级质量门槛；undefined = 不启用（loadRepo 用它做全部技能级判定） */
+  skillGate?: SkillGateOptions
 }
 
 interface LoadRepoOptions extends ResolvedOptions {
@@ -184,6 +192,21 @@ interface LoadState {
   manifest: SkillManifestEntry[]
   /** 本次构建对每个候选仓库的判定，写入 triage.jsonl */
   triage: TriageRecord[]
+  /** 本次构建被技能级门槛淘汰的技能，写入 _skill-gate.jsonl */
+  skillGate: SkillGateRecord[]
+  /** 跨仓去重过滤器（有状态；显式配置与高 star 仓库先处理，保首个） */
+  dedupe: ReturnType<typeof createDedupeFilter>
+}
+
+/** 一条技能级判定记录，落盘为 JSON Lines 的一行 */
+interface SkillGateRecord {
+  repo: string
+  id: string
+  sha: string
+  code: string
+  reason: string
+  /** 正文长度：审计时快速判断 SK1 的严重程度 */
+  bodyChars: number
 }
 
 /** 一条判定记录，落盘为 JSON Lines 的一行 */
@@ -235,6 +258,8 @@ const DEFAULT_CACHE_DIR = '.cache/skills-remote'
 const DISCOVERY_CACHE_FILE = '_discovery.json'
 /** 判定日志（JSON Lines），与语料缓存同目录 */
 const TRIAGE_LOG_FILE = '_triage.jsonl'
+/** 技能级门槛日志（JSON Lines），与语料缓存同目录 */
+const SKILL_GATE_LOG_FILE = '_skill-gate.jsonl'
 const DEFAULT_SKIP = ['template', 'templates', '.github', 'node_modules', 'dist', 'build']
 const FETCH_TIMEOUT_MS = 30_000
 const FILE_FETCH_CONCURRENCY = 8
@@ -265,6 +290,7 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
     rawBase: (options.rawBase ?? DEFAULT_RAW_BASE).replace(/\/+$/, ''),
     token: options.token || undefined,
     cacheDir: options.cacheDir,
+    skillGate: options.skillGate,
   }
   const defaultSkip = options.defaultSkip ?? DEFAULT_SKIP
 
@@ -272,7 +298,13 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
     name: 'github-skills-loader',
     async load(context) {
       const { logger } = context
-      const state: LoadState = { rateLimited: false, manifest: [], triage: [] }
+      const state: LoadState = {
+        rateLimited: false,
+        manifest: [],
+        triage: [],
+        skillGate: [],
+        dedupe: createDedupeFilter(),
+      }
 
       // AI 分类记忆库（由 scripts/ai-classify.mjs 生成）。
       // 每次构建加载一次；文件不存在属正常情况（尚未跑过 AI 分类），此时全部走规则层。
@@ -416,6 +448,12 @@ export function githubSkills(options: GitHubSkillsOptions): Loader {
        * 事后无法区分「仓库没有 skill」与「抓取逻辑坏了」。
        */
       writeTriageLog(state.triage, resolved.cacheDir, context.config.root, context.logger)
+      /*
+       * 技能级门槛日志：逐条记录被淘汰的技能与原因码。
+       * 与 triage.jsonl 平行 —— 仓库为什么整体不收看 triage，
+       * 单个技能为什么被拒看这份；audit 会汇总它。
+       */
+      writeSkillGateLog(state.skillGate, state.manifest.length, resolved.cacheDir, context.config.root, context.logger)
     },
   }
 }
@@ -801,6 +839,31 @@ async function loadRepo(
     throw new Error(`[github-skills] ${cfg.repo}: ${filePath} 拉取失败且无可用缓存 — ${message(error)}`)
   }
 
+  /*
+   * 技能级质量门槛（三级判定）。
+   *
+   * 仓库通过 Q1-Q3 只说明「值得抓」，不代表每个 SKILL.md 可用。
+   * 判定必须发生在写 store 与清单之前 —— 被拒的技能不产页、不进索引，
+   * AI 分类也不会为它花钱（阈值来源与全量实测见 src/lib/skill-quality.ts）。
+   *
+   * 结构分两段：
+   *   1) 逐条判定（纯函数，不动 store），汇总本仓全部候选的 verdict
+   *   2) 决策时刻再分区：
+   *      - 整仓剔除命中 → 全部候选记 SK4（仓库级决策优先于单条原因，
+   *        审计据此列出剔除名单）
+   *      - 否则 → SK1/SK2 逐条记日志；通过项进入提交（parseData →
+   *        跨仓去重 SK3 → store / 清单）
+   */
+  interface JudgedSkill {
+    entry: CachedFile
+    id: string
+    dir: string
+    dirName: string
+    verdict: SkillVerdict
+  }
+  const gate = opts.skillGate
+  const judged: JudgedSkill[] = []
+
   for (let index = 0; index < files.length; index++) {
     const file = files[index]
     const entry = entries[index]
@@ -833,28 +896,97 @@ async function loadRepo(
       continue
     }
 
-    const data = await parseData({
-      id,
-      data: mapSkillData(entry.frontmatter, {
-        cfg,
-        owner,
+    // 未配置门槛时 judgeSkill 收到空对象，恒为 PASS —— 无需分支
+    const verdict = judgeSkill(
+      { id, repo: cfg.repo, sha: entry.sha, body: entry.body, frontmatter: entry.frontmatter },
+      gate ?? {},
+    )
+    judged.push({ entry, id, dir, dirName, verdict })
+  }
+
+  /* 整仓决策：未通过占比严格大于阈值 → 全部候选一并剔除（近全废仓不配代表技能） */
+  const repoOutcome = judgeRepoOutcome(judged.map(skill => skill.verdict), gate?.repoJunkRatio)
+  if (repoOutcome.drop) {
+    logger.warn(`[github-skills] ${cfg.repo}: ${repoOutcome.reason}，整仓剔除 ${judged.length} 个技能`)
+    for (const skill of judged) {
+      skipped++
+      state.skillGate.push({
         repo: cfg.repo,
-        ref,
-        dir,
-        dirName,
-        // AI 记忆库优先：内容未变时采用历史 AI 分类结果
-        aiCategory: lookupAiCategory(aiCache, id, entry.sha),
-      }),
-    })
-    store.set({ id, data, body: entry.body, digest: generateDigest({ data, body: entry.body }) })
-    // 收录成功才进清单：被去重挤掉或解析失败的条目不会让 AI 白花钱
-    state.manifest.push({
-      id,
-      sha: entry.sha,
-      description: describeForAi(data, id),
-      repo: cfg.repo,
-    })
-    loaded++
+        id: skill.id,
+        sha: skill.entry.sha,
+        code: 'SK4',
+        reason: repoOutcome.reason,
+        bodyChars: skill.entry.body.length,
+      })
+    }
+  } else {
+    for (const skill of judged) {
+      if (skill.verdict.decision === 'SKIP') {
+        skipped++
+        state.skillGate.push({
+          repo: cfg.repo,
+          id: skill.id,
+          sha: skill.entry.sha,
+          code: skill.verdict.code,
+          reason: skill.verdict.reason,
+          bodyChars: skill.entry.body.length,
+        })
+        continue
+      }
+
+      /*
+       * 仓内同 id 的第二个文件在此被拦下（第一个刚提交进 store）。
+       * 阶段 1 的 store.has 只看得见跨仓已提交的技能 —— 提交被推迟后，
+       * 本仓的占用情况只能在提交时点检查。语义与旧实现一致：
+       * 第二个同 id 文件跳过并告警，不占用判定记录。
+       */
+      if (store.has(skill.id)) {
+        skipped++
+        logger.warn(`[github-skills] ${cfg.repo}: 跳过 ${skill.dir || name}（id "${skill.id}" 已被本地或其他仓库占用）`)
+        continue
+      }
+
+      const data = await parseData({
+        id: skill.id,
+        data: mapSkillData(skill.entry.frontmatter, {
+          cfg,
+          owner,
+          repo: cfg.repo,
+          ref,
+          dir: skill.dir,
+          dirName: skill.dirName,
+          // AI 记忆库优先：内容未变时采用历史 AI 分类结果
+          aiCategory: lookupAiCategory(aiCache, skill.id, skill.entry.sha),
+        }),
+      })
+      /*
+       * 跨仓去重：同 sha 或同规范化描述保首个。
+       * 处理顺序 = 显式配置仓库在前、其余按 star 降序，
+       * 因此「先到」天然是更权威的来源（如 anthropics 原件先于第三方副本）。
+       */
+      const description = describeForAi(data, skill.id)
+      if (!state.dedupe.accept(skill.entry.sha, description)) {
+        skipped++
+        state.skillGate.push({
+          repo: cfg.repo,
+          id: skill.id,
+          sha: skill.entry.sha,
+          code: 'SK3',
+          reason: '与先收录的技能重复（同内容或同描述）',
+          bodyChars: skill.entry.body.length,
+        })
+        continue
+      }
+      store.set({ id: skill.id, data, body: skill.entry.body, digest: generateDigest({ data, body: skill.entry.body }) })
+      // 收录成功才进清单：被去重挤掉或解析失败的条目不会让 AI 白花钱
+      state.manifest.push({
+        id: skill.id,
+        sha: skill.entry.sha,
+        description,
+        repo: cfg.repo,
+      })
+      loaded++
+    }
   }
 
   /*
@@ -1322,6 +1454,44 @@ function writeTriageLog(
   } catch (error) {
     // 判定日志只用于排查，写失败不该让构建失败
     logger.warn(`[github-skills] 判定日志写入失败 — ${message(error)}`)
+  }
+}
+
+/**
+ * 写出技能级门槛日志（JSON Lines，每行一个被淘汰的技能）。
+ *
+ * 与 triage.jsonl 平行：仓库级「为什么整仓不收」看那份，
+ * 单个技能「为什么被拒」看这份。每轮构建无条件重写；
+ * 被拒技能不产页、不进清单，这份日志是事后回溯的唯一线索，
+ * audit 也会读它做汇总（但不作为失败条件）。
+ */
+function writeSkillGateLog(
+  records: SkillGateRecord[],
+  keptCount: number,
+  cacheDir: string | URL | undefined,
+  root: URL,
+  logger: LoaderContext['logger'],
+): void {
+  if (records.length === 0) return
+  const file = path.join(cacheDirPath(cacheDir, root), SKILL_GATE_LOG_FILE)
+  const tally: Record<string, number> = {}
+  const lines = records.map(record => {
+    tally[record.code] = (tally[record.code] ?? 0) + 1
+    return JSON.stringify(record)
+  })
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, `${lines.join('\n')}\n`, 'utf8')
+    const summary = Object.entries(tally)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([code, n]) => `${code} ${n}`)
+      .join(' / ')
+    logger.info(
+      `[github-skills] 技能级门槛：淘汰 ${records.length} 条（${summary}），保留 ${keptCount} → ${path.relative(fileURLToPath(root), file)}`,
+    )
+  } catch (error) {
+    // 只用于排查与审计，写失败不该让构建失败
+    logger.warn(`[github-skills] 技能级门槛日志写入失败 — ${message(error)}`)
   }
 }
 
