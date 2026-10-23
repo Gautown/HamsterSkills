@@ -104,8 +104,6 @@ export const T = {
     tagsLabel: '标签',
     backAll: '全部技能',
     backCategories: '返回分类',
-    backCategory: '返回该分类',
-    sideCategory: '分类',
     sideActions: '快速操作',
     skillsInCategory: '个技能',
     categoryEmpty: '该分类暂无技能',
@@ -124,8 +122,7 @@ export const T = {
     bodyPlaceholder: '该 skill 未提供独立说明文档，内容位于源仓库，请点击右侧「在 GitHub 查看」。',
     oneClick: 'ONE-CLICK',
     exportBtn: '导出',
-    installBtn: '一键安装',
-    /** 安装菜单（详情页右侧栏） */
+    /** 安装区（详情页右侧栏，常驻可见） */
     installMenuTitle: '安装到本地工具',
     installGlobal: '全局',
     installProject: '项目',
@@ -234,8 +231,6 @@ export const T = {
     tagsLabel: '標籤',
     backAll: '全部技能',
     backCategories: '返回分類',
-    backCategory: '返回該分類',
-    sideCategory: '分類',
     sideActions: '快速操作',
     skillsInCategory: '個技能',
     categoryEmpty: '該分類暫無技能',
@@ -254,8 +249,7 @@ export const T = {
     bodyPlaceholder: '該 skill 未提供獨立說明文件，內容位於原始碼倉庫，請點擊右側「在 GitHub 查看」。',
     oneClick: 'ONE-CLICK',
     exportBtn: '匯出',
-    installBtn: '一鍵安裝',
-    /** 安裝選單（詳情頁右側欄） */
+    /** 安裝區（詳情頁右側欄，常駐可見） */
     installMenuTitle: '安裝到本機工具',
     installGlobal: '全域',
     installProject: '專案',
@@ -363,8 +357,6 @@ export const T = {
     tagsLabel: 'Tags',
     backAll: 'All skills',
     backCategories: 'Back to categories',
-    backCategory: 'Back to this category',
-    sideCategory: 'Category',
     sideActions: 'Quick actions',
     skillsInCategory: 'skills',
     categoryEmpty: 'No skills in this category yet.',
@@ -384,8 +376,7 @@ export const T = {
       'This skill ships no standalone document — its content lives in the source repository. Use “View on GitHub”.',
     oneClick: 'ONE-CLICK',
     exportBtn: 'Export',
-    installBtn: 'One-click install',
-    /** Install menu (detail page right sidebar) */
+    /** Install section (detail page right sidebar, always visible) */
     installMenuTitle: 'Install to a local tool',
     installGlobal: 'Global',
     installProject: 'Project',
@@ -494,8 +485,6 @@ export const T = {
     tagsLabel: '태그',
     backAll: '전체 스킬',
     backCategories: '카테고리로 돌아가기',
-    backCategory: '이 카테고리로 돌아가기',
-    sideCategory: '카테고리',
     sideActions: '빠른 작업',
     skillsInCategory: '개의 스킬',
     categoryEmpty: '이 카테고리에는 아직 스킬이 없습니다.',
@@ -514,8 +503,7 @@ export const T = {
     bodyPlaceholder: '이 스킬에는 별도의 설명 문서가 없습니다 — 원본 내용은 저장소에 있으니 「GitHub에서 보기」를 이용하세요.',
     oneClick: '원클릭',
     exportBtn: '내보내기',
-    installBtn: '원클릭 설치',
-    /** 설치 메뉴(상세 페이지 오른쪽 사이드바) */
+    /** 설치 영역(상세 페이지 오른쪽 사이드바, 항상 표시) */
     installMenuTitle: '로컬 도구에 설치',
     installGlobal: '전역',
     installProject: '프로젝트',
@@ -623,8 +611,6 @@ export const T = {
     tagsLabel: 'Tag',
     backAll: 'Semua kemahiran',
     backCategories: 'Kembali ke kategori',
-    backCategory: 'Kembali ke kategori ini',
-    sideCategory: 'Kategori',
     sideActions: 'Tindakan pantas',
     skillsInCategory: 'kemahiran',
     categoryEmpty: 'Belum ada kemahiran dalam kategori ini.',
@@ -644,8 +630,7 @@ export const T = {
       'Kemahiran ini tidak menyediakan dokumen berasingan — kandungannya berada dalam repositori sumber. Guna “Lihat di GitHub”.',
     oneClick: 'SATU KLIK',
     exportBtn: 'Eksport',
-    installBtn: 'Pasang satu klik',
-    /** Menu pemasangan (bar sisi kanan halaman butiran) */
+    /** Kawasan pemasangan (bar sisi kanan halaman butiran, sentiasa kelihatan) */
     installMenuTitle: 'Pasang ke alat tempatan',
     installGlobal: 'Global',
     installProject: 'Projek',

@@ -1727,28 +1727,6 @@ h2 {
   gap: 6px;
 }
 
-.install-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, #d8f5e8, #bfeedd);
-  color: #0b5d3b;
-  font-size: 14px;
-  font-weight: 700;
-  padding: 11px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: filter 0.15s;
-}
-
-.install-btn:hover {
-  filter: brightness(0.97);
-}
-
 /*
  * 复制失败态。
  *
@@ -1795,12 +1773,6 @@ h2 {
   }
 }
 
-/* 图标与文案分离：状态切换只改文字，不动图标 */
-.install-btn-icon {
-  flex-shrink: 0;
-  font-family: 'Cascadia Code', Consolas, 'Courier New', monospace;
-}
-
 /* 导出状态提示：默认占位 0 高度，出现时不撑开按钮布局 */
 .export-status {
   display: block;
@@ -1816,23 +1788,19 @@ h2 {
 }
 
 /*
- * 安装菜单（详情页右栏）：安装按钮作 <details> 的 summary，展开为工具列表。
- * 面板复用 .nav-drop-menu 的绝对定位（details 自身 position:relative，
- * 锚定在按钮正下方），行内为「工具名 + 右侧两条命令 chip」。
- * chip 点击复制命令：成功闪 ✓、失败闪 ✗ + 红色（见上方 .cmd-chip.is-failed）。
+ * 安装区（详情页右栏）：常驻可见的工具列表，不再折叠。
+ *
+ * 每行「工具名 + 右侧两条命令 chip」；chip 点击复制命令：
+ * 成功闪 ✓、失败闪 ✗ + 红色（见上方 .cmd-chip.is-failed）。
+ *
+ * 为什么常驻：折叠状态下用户得先点一下才知道有哪些工具，
+ * 而这一列本身信息密度低（8 行小字），铺开后右栏变长但可一次性扫完。
+ * 行距与字号取压缩值，抵消铺开带来的高度增量。
  */
-.install-menu {
-  min-width: 264px;
-  padding: 10px;
-}
-
-.install-menu-title {
-  margin: 0 0 8px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
+.install-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .install-row {
@@ -1840,13 +1808,21 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 3px 0;
+  padding: 1px 0;
 }
 
 .install-tool {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   white-space: nowrap;
+  /*
+   * 长工具名（如 ko 的「기타 도구 (자동 감지)」）在 960px 最窄桌面宽度下
+   * 会把右侧 chip 挤出容器：旧下拉是绝对定位、可自动加宽，行内列表不能。
+   * 省略号截断保 chip 恒可见；flex 子项默认 min-width:auto，须显式归零。
+   */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .install-chips {
@@ -1872,21 +1848,12 @@ h2 {
 }
 
 .install-hint {
-  margin: 8px 0 0;
-  padding-top: 8px;
+  margin: 6px 0 0;
+  padding-top: 6px;
   border-top: 1px solid var(--line);
   font-size: 11px;
   color: var(--muted);
   line-height: 1.5;
-}
-
-.install-caret {
-  opacity: 0.7;
-  transition: transform 0.18s;
-}
-
-.install-drop[open] .install-caret {
-  transform: rotate(180deg);
 }
 
 .github-cta {
@@ -2020,25 +1987,7 @@ h2 {
   padding-left: 18px;
 }
 
-.cat-link {
-  display: inline-block;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--accent-text);
-  text-decoration: none;
-}
-
-.cat-link:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 @media (prefers-color-scheme: dark) {
-  .install-btn {
-    background: linear-gradient(180deg, rgba(16, 185, 129, 0.28), rgba(16, 185, 129, 0.15));
-    color: #6ee7b7;
-  }
-
   .vote-btn.up.voted {
     background: rgba(22, 163, 74, 0.2);
   }
@@ -2046,11 +1995,6 @@ h2 {
   .vote-btn.down.voted {
     background: rgba(220, 38, 38, 0.2);
   }
-}
-
-:root[data-theme='dark'] .install-btn {
-  background: linear-gradient(180deg, rgba(16, 185, 129, 0.28), rgba(16, 185, 129, 0.15));
-  color: #6ee7b7;
 }
 
 :root[data-theme='dark'] .vote-btn.up.voted {
@@ -2428,12 +2372,6 @@ h2 {
   margin: 0 0 10px;
 }
 
-.side-cat {
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
 .side-actions {
   display: flex;
   flex-direction: column;
@@ -2557,6 +2495,14 @@ h2 {
   .detail-side {
     position: sticky;
     top: 64px;
+    /*
+     * 右栏内容高于视口时的兜底：install 区铺开后整列接近/超过一屏，
+     * 而 sticky 元素比视口高时**底部内容永远滚不到**。
+     * 限高 + 内部滚动，保证分类、文件列表仍可达。
+     * 80px = 顶栏 64px + 留白。
+     */
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
   }
 }
 

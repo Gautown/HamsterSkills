@@ -1,6 +1,6 @@
 # 安装到本地 AI 工具（一键安装通道）
 
-详情页右栏的「一键安装」按钮展开安装菜单：每个工具给 **全局 / 项目** 两条可复制命令，
+详情页右栏的「安装到本地工具」区块**常驻可见**（不折叠）：每个工具给 **全局 / 项目** 两条可复制命令，
 粘进终端即完成安装。本文记录通道选型、命令构建规则与各工具的落盘目录。
 
 ## 通道选型
@@ -20,7 +20,7 @@ npx skills add <source> [-g] [-a <agent>] -y
 3. **官方维护**（Vercel Labs），非第三方拼装。
 
 代价：要求用户本机 **Node.js ≥ 22.20**（`npx` 随 Node 附带）。
-菜单里的那句 hint 已注明。
+区块底部的那句 hint 已注明。
 
 ## 安装源决策
 
@@ -49,7 +49,7 @@ npx skills add <source> [-g] [-a <agent>] -y
 agent 取值与全局目录来自 skills CLI 官方文档（docs/agents.md）。
 「全局」= 装到用户目录（`-g`）；「项目」= 装到当前项目目录（不带 `-g`）。
 
-| 菜单标签 | `-a` 取值 | 全局落盘目录 |
+| 工具标签 | `-a` 取值 | 全局落盘目录 |
 |---|---|---|
 | OpenCode | `opencode` | `~/.config/opencode/skills/` |
 | Claude Code | `claude-code` | `~/.claude/skills/` |
@@ -59,14 +59,14 @@ agent 取值与全局目录来自 skills CLI 官方文档（docs/agents.md）。
 | Hermes Agent | `hermes-agent` | `~/.hermes/skills/` |
 | 其他工具（自动识别） | （省略 `-a`） | CLI 交互式识别当前环境 |
 
-菜单固定提供上表 6 工具 + 通用入口。新增/删改工具时：改 `SkillDetail.astro`
+区块固定提供上表 6 工具 + 通用入口。新增/删改工具时：改 `SkillDetail.astro`
 的 `installTools` 数组，agent 取值先查 skills 官方 agents 表，并在
 `scripts/install.test.mjs` 的「所有 -a 取值」用例里同步。
 
 ## WorkBuddy（手动指引）
 
 WorkBuddy 不在 skills CLI 的 agent 表里（社区实测的 `~/.workbuddy/skills/`
-目录未经官方确认），因此菜单不给命令、只给一行**可复制的手动指引**：
+目录未经官方确认），因此只给一行**可复制的手动指引**而不给命令：
 
 > 用「导出」下载 SKILL.md，放入 `~/.workbuddy/skills/<技能id>/` 后重启 WorkBuddy。
 
@@ -89,7 +89,7 @@ npx skills add <source> -g -y              # 通用（自动识别，全局）
 
 - 本机必须能访问 GitHub（远端技能）与本站域名（本地技能）；
 - 安装的是技能文件，不会配置目标工具的其他设置（如 MCP）；
-- 项目级安装依赖「在目标项目目录下执行」，菜单文案未强调这一点，
+- 项目级安装依赖「在目标项目目录下执行」，区块文案未强调这一点，
   用户装错位置时删除对应目录即可恢复。
 
 ## 验证方式

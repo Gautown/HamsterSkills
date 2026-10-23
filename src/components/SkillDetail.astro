@@ -65,7 +65,7 @@ const bodyView = renderSkillBodyForDisplay(entry.body)
 const bodyIsPlaceholder = isPlaceholderBody(entry.body)
 
 /*
- * 安装菜单（详见 docs/install-to-agents.md）。
+ * 安装区（详见 docs/install-to-agents.md），右栏常驻可见、不折叠。
  *
  * 安装源：远端技能 → 源仓库 tree URL（`npx skills add` 直接吃这种格式）；
  * 本地技能 → 本站 /dl/<id>.md（构建期生成的规范 SKILL.md 下载通道）。
@@ -389,46 +389,40 @@ const skillMdText = [
             <span class="export-status export-status-inline" data-done={t.exported} aria-live="polite"></span>
           </button>
         </div>
-        {/*
-          安装菜单：安装按钮改作 <details> 的 summary，展开工具列表。
-          面板复用 .nav-drop 交互（Header 脚本的全局绑定：互斥开合 / 点外关闭 / Esc）。
-          每行两条命令 chip [全局/项目]，点击复制到剪贴板，粘进终端直接跑；
-          WorkBuddy 无 CLI 通道，给可复制的手动指引。
-        */}
-        {installRows.length > 0 && (
-          <details class="nav-drop install-drop">
-            <summary class="install-btn" aria-label={t.installMenuTitle}>
-              <span class="install-btn-icon" aria-hidden="true">&gt;_</span>
-              <span class="install-btn-text">{t.installBtn}</span>
-              <svg class="install-caret" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
-                <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" />
-              </svg>
-            </summary>
-            <div class="nav-drop-menu install-menu">
-              <p class="install-menu-title">{t.installMenuTitle}</p>
-              {installRows.map(row => (
-                <div class="install-row">
-                  <span class="install-tool">{row.label}</span>
-                  <span class="install-chips">
-                    <button class="cmd-chip" type="button" data-cmd={row.globalCmd} data-label={t.installGlobal} title={row.globalCmd}>{t.installGlobal}</button>
-                    <button class="cmd-chip" type="button" data-cmd={row.projectCmd} data-label={t.installProject} title={row.projectCmd}>{t.installProject}</button>
-                  </span>
-                </div>
-              ))}
+      </div>
+      {/*
+        安装区：常驻可见的一列（不再折叠成下拉菜单）。
+        每行两条命令 chip [全局/项目]，点击复制到剪贴板，粘进终端直接跑；
+        WorkBuddy 无 CLI 通道，给可复制的手动指引。
+        独立成区块（与文件列表、分类同级的 .side-block）——
+        它承载的是「装到本地 / 去源仓库」这类动作，和上面的复制/导出是两回事。
+      */}
+      {installRows.length > 0 && (
+        <div class="side-block">
+          <p class="side-label">{t.installMenuTitle}</p>
+          <div class="install-list">
+            {installRows.map(row => (
               <div class="install-row">
-                <span class="install-tool">WorkBuddy</span>
+                <span class="install-tool">{row.label}</span>
                 <span class="install-chips">
-                  <button class="cmd-chip" type="button" data-cmd={workbuddyHint} data-label={t.copy} title={workbuddyHint}>{t.copy}</button>
+                  <button class="cmd-chip" type="button" data-cmd={row.globalCmd} data-label={t.installGlobal} title={row.globalCmd}>{t.installGlobal}</button>
+                  <button class="cmd-chip" type="button" data-cmd={row.projectCmd} data-label={t.installProject} title={row.projectCmd}>{t.installProject}</button>
                 </span>
               </div>
-              <p class="install-hint">{t.installHint}</p>
+            ))}
+            <div class="install-row">
+              <span class="install-tool">WorkBuddy</span>
+              <span class="install-chips">
+                <button class="cmd-chip" type="button" data-cmd={workbuddyHint} data-label={t.copy} title={workbuddyHint}>{t.copy}</button>
+              </span>
             </div>
-          </details>
-        )}
-        {d.github && (
-          <a class="github-cta" href={d.github} target="_blank" rel="noopener">▶ {t.githubLabel} ↗</a>
-        )}
-      </div>
+          </div>
+          <p class="install-hint">{t.installHint}</p>
+          {d.github && (
+            <a class="github-cta" href={d.github} target="_blank" rel="noopener">▶ {t.githubLabel} ↗</a>
+          )}
+        </div>
+      )}
       {d.files && d.files.length > 0 && (
         <div class="side-block">
           <p class="side-label">{t.fileBrowse} <span class="file-total">{d.files.length}</span></p>
@@ -442,11 +436,6 @@ const skillMdText = [
           </div>
         </div>
       )}
-      <div class="side-block">
-        <p class="side-label">{t.sideCategory}</p>
-        <div class="side-cat">{catName}</div>
-        <a class="cat-link" href={`${base}/categories/${d.category}`}>{t.backCategory} →</a>
-      </div>
       {related.length > 0 && (
         <div class="side-block">
           <p class="side-label">{t.relatedLabel}</p>
@@ -593,7 +582,7 @@ const skillMdText = [
   })
 
   /*
-   * 安装菜单命令 chip（.cmd-chip）：复制命令并闪符号反馈。
+   * 安装区命令 chip（.cmd-chip）：复制命令并闪符号反馈。
    * chip 太小放不下整句状态文案，成功显示 ✓、失败显示 ✗ + 红色标记，
    * 几秒后恢复为 data-label（「全局 / 项目 / 复制」等原文）。
    */
