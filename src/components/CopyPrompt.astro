@@ -29,7 +29,12 @@ const { prompt, label, copyLabel, copied, failed, note } = Astro.props
 
 <script>
   const pre = document.querySelector<HTMLElement>('.prompt-box pre')
-  for (const btn of document.querySelectorAll<HTMLElement>('.copy-btn')) {
+  /*
+   * 选择器含 .copy-prompt-btn：详情页右栏「复制」按钮为避开 .copy-btn 的
+   * 卡片样式（accent 实心 + padding 覆盖）用了独立类名，但行为不变——
+   * 点击仍复制本组件 prompt 框内容。
+   */
+  for (const btn of document.querySelectorAll<HTMLElement>('.copy-btn, .copy-prompt-btn')) {
     btn.addEventListener('click', async () => {
       const text = pre?.innerText || ''
       /*

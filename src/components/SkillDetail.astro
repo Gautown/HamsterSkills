@@ -126,7 +126,34 @@ const skillMdText = [
 ---
 
 <article class="container detail">
-  <a class="crumb" href={base || '/'}>&larr; {t.backAll}</a>
+  {/*
+    标准面包屑（Breadcrumb Navigation）：全部技能 › 分类 › 当前技能。
+    - 末级为当前页（无链接、aria-current），符合 WAI-ARIA 与 Google 结构化数据惯例
+    - <script type="application/ld+json"> 输出 BreadcrumbList，供搜索引擎
+      在结果页展示层级路径（body 内的 JSON-LD 同样有效，无需动 Layout）
+    - URL 全部基于 Astro.site 拼绝对地址：本地构建为占位域名，
+      CI 由 SITE_URL Secret 注入真实域名，与 canonical 同源
+  */}
+  <nav class="breadcrumb" aria-label={t.breadcrumbLabel}>
+    <ol>
+      <li><a href={base || '/'}>{t.backAll}</a></li>
+      <li><a href={`${base}/categories/${d.category}`}>{catName}</a></li>
+      <li aria-current="page">{title}</li>
+    </ol>
+  </nav>
+  <script
+    type="application/ld+json"
+    is:inline
+    set:html={JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: t.backAll, item: new URL(`${base || '/'}`, Astro.site).href },
+        { '@type': 'ListItem', position: 2, name: catName, item: new URL(`${base}/categories/${d.category}`, Astro.site).href },
+        { '@type': 'ListItem', position: 3, name: title, item: new URL(`${base}/skills/${entry.id}/`, Astro.site).href },
+      ],
+    })}
+  />
   <div class="detail-grid">
     <div class="detail-main">
       <p class="eyebrow">{t.catsEyebrow}</p>
@@ -366,14 +393,16 @@ const skillMdText = [
         <div class="btn-row">
           {/*
             文件操作对：复制 + 导出。
-            - 有 prompt（本地精选技能）：复制 = 复制 prompt（沿用 CopyPrompt 的
-              全局 .copy-btn 绑定，复制的是 prompt 框内容）
+            - 有 prompt（本地精选技能）：复制 = 复制 prompt（.copy-prompt-btn，
+              由 CopyPrompt 脚本全局绑定、复制的是 prompt 框内容。
+              类名特意不带 .copy-btn —— 那是首页卡片实心按钮的独立样式，
+              同特异性下会覆盖 .side-btn2 的 padding，把按钮顶高）
             - 无 prompt（远端技能）：复制 = 复制 SKILL.md 全文（.copy-skill-btn，
-              由本组件脚本处理；不能复用 .copy-btn —— 那个选择器被 CopyPrompt
+              由本组件脚本处理；同样不能复用 .copy-btn —— 那个选择器被 CopyPrompt
               脚本全局接管，会去复制并不存在的 prompt 框）
           */}
           {d.prompt ? (
-            <button class="copy-btn side-btn2" type="button" data-label={t.copy} data-copied={t.copied}>
+            <button class="copy-prompt-btn side-btn2" type="button" data-label={t.copy} data-copied={t.copied} data-failed={t.copyFailed}>
               <span class="btn-eyebrow">{t.oneClick}</span>
               <span class="btn-main">{t.copy}</span>
             </button>
@@ -564,7 +593,7 @@ const skillMdText = [
 
   /*
    * 复制 SKILL.md 全文（.copy-skill-btn，远端技能、无 prompt 时显示）。
-   * 本地技能走 .copy-btn —— 那个选择器被 CopyPrompt 的脚本全局接管、
+   * 本地技能走 .copy-prompt-btn —— 该选择器被 CopyPrompt 的脚本全局接管、
    * 复制的是 prompt 框内容，两套职责不能混在一个选择器上。
    * 只替换 .btn-main 的文字节点，图标（.btn-eyebrow）不动。
    */
