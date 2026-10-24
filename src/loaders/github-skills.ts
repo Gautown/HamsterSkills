@@ -1220,6 +1220,12 @@ function mapSkillData(frontmatter: Record<string, unknown>, ctx: SkillContext): 
       ? `https://github.com/${ctx.repo}/tree/${refSegment}/${dirSegment}`
       : `https://github.com/${ctx.repo}/tree/${refSegment}`,
     author: ctx.owner,
+    /*
+     * 文件浏览骨架统一：增量缓存按 SKILL.md 逐个存档（目录树不可得），
+     * SKILL.md 是远端技能唯一确定存在的文件——只列它，不臆造目录内容。
+     * 本地精选技能的 files 为人工维护的完整清单，不受影响。
+     */
+    files: ['SKILL.md'],
     // 仓库热度：发现阶段随搜索结果一起带回，无需额外请求
     ...(typeof ctx.cfg.stars === 'number' ? { stars: ctx.cfg.stars } : {}),
   }
