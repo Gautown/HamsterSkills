@@ -629,6 +629,21 @@ const skillMdText = [
     })
   }
 
+  /*
+   * 右栏 sticky 自适应：内容放得下视口（减去顶栏 64px + 留白）才保持跟随；
+   * 放不下自动降级为普通流，随页面滚动——任何视口都不会出现内部滚动条，
+   * 也不会有「底部内容滚不到」的死角。resize 时重测（横竖屏切换/缩放）。
+   */
+  const side = document.querySelector<HTMLElement>('.detail-side')
+  if (side) {
+    const syncSticky = () => {
+      const fits = side.scrollHeight <= window.innerHeight - 80
+      side.classList.toggle('no-sticky', !fits)
+    }
+    syncSticky()
+    window.addEventListener('resize', syncSticky)
+  }
+
   const exportBtn = document.querySelector<HTMLElement>('.export-btn')
   exportBtn?.addEventListener('click', () => {
     /*

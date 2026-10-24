@@ -1614,7 +1614,7 @@ h2 {
 .related-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
 .related-item {
@@ -1887,7 +1887,7 @@ h2 {
   background: var(--surface);
   color: var(--foreground);
   border-radius: 6px;
-  padding: 3px 9px;
+  padding: 2px 8px;
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
@@ -1899,8 +1899,8 @@ h2 {
 }
 
 .install-hint {
-  margin: 6px 0 0;
-  padding-top: 6px;
+  margin: 4px 0 0;
+  padding-top: 4px;
   border-top: 1px solid var(--line);
   font-size: 11px;
   color: var(--muted);
@@ -1919,9 +1919,9 @@ h2 {
   color: #fff;
   font-size: 14px;
   font-weight: 700;
-  padding: 11px;
+  padding: 8px;
   text-decoration: none;
-  margin-top: 10px;
+  margin-top: 6px;
   font-family: inherit;
 }
 
@@ -2018,7 +2018,7 @@ h2 {
 .file-box {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  padding: 6px 10px;
   font-family: 'Cascadia Code', Consolas, 'Courier New', monospace;
   font-size: 12px;
   background: var(--surface);
@@ -2403,11 +2403,18 @@ h2 {
   display: flex;
   flex-direction: column;
   align-content: start;
+  /*
+   * grid item 默认 stretch：右栏会被拉到与正文行同高（远端技能正文
+   * 可达上万像素），卡片边框变成整页长条。顶部对齐让高度回到内容高，
+   * 也是 sticky 侧栏的标准搭档（stretch 的盒子比视口高时 sticky 失真）。
+   */
+  align-self: start;
   overflow: hidden;
 }
 
 .side-block {
-  padding: 18px;
+  /* 紧凑化：18px→10px。右栏 6 个块 × 16px = 近百像素，是内滚条出现的最大单一成因 */
+  padding: 10px;
 }
 
 .side-block + .side-block {
@@ -2420,7 +2427,7 @@ h2 {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
-  margin: 0 0 10px;
+  margin: 0 0 6px;
 }
 
 .side-actions {
@@ -2547,13 +2554,14 @@ h2 {
     position: sticky;
     top: 64px;
     /*
-     * 右栏内容高于视口时的兜底：install 区铺开后整列接近/超过一屏，
-     * 而 sticky 元素比视口高时**底部内容永远滚不到**。
-     * 限高 + 内部滚动，保证分类、文件列表仍可达。
-     * 80px = 顶栏 64px + 留白。
+     * 不再设 max-height/overflow-y：内容超视口时右栏内部滚动条非常碍眼，
+     * 改由脚本自适应（见 SkillDetail）：放得下视口才保持 sticky，
+     * 放不下自动降级为普通流随页滚——任何视口都不会出现内滚条。
      */
-    max-height: calc(100vh - 80px);
-    overflow-y: auto;
+  }
+
+  .detail-side.no-sticky {
+    position: static;
   }
 }
 
