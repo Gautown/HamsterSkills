@@ -92,6 +92,14 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
     <meta name="description" content={pageDesc} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
+    <!--
+      Inter 自托管字体预加载（48KB/档 latin 子集）：首屏正文与标题都用它，
+      不预加载会经历一轮 fallback 交换抖动。crossorigin 是字体预加载的硬性要求
+      （匿名模式请求，不匹配会导致二次下载）。
+    -->
+    <link rel="preload" href="/fonts/inter-300.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin />
+
     <!-- canonical：告诉搜索引擎本页的唯一权威地址（站内中英同源时尤其重要） -->
     <link rel="canonical" href={canonical} />
 

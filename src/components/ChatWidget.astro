@@ -247,11 +247,11 @@ const strings = {
   }
 
   /*
-  标题栏用实心蓝底。
+  标题栏用实心品牌 indigo 底（Stripe primary）。
 
-  背景写死 #0078D4 而不是 var(--accent)：深色模式下 --accent 是浅蓝 #4cc2ff，
-  配白字会看不清（对比度约 1.6:1）。字面值在明暗两种模式下都能保证可读。
-  白字配 #0078D4 对比度约 4.6:1，达 WCAG AA 正文标准。
+  背景写死 #533afd 而不是 var(--accent)：深色模式下 --accent 是提亮紫
+  #8f8aff，配白字会看不清。字面值在明暗两种模式下都能保证可读。
+  白字配 #533afd 对比度约 6.4:1，达 WCAG AA 正文标准。
 */
 .chat-head {
     display: flex;
@@ -259,8 +259,8 @@ const strings = {
     justify-content: space-between;
     gap: 12px;
     padding: 0 14px;
-    /* 蓝底已经起到分隔作用，再叠一条线在深色模式下会变成一道深色缝 */
-    background: #0078d4;
+    /* 色底已经起到分隔作用，再叠一条线在深色模式下会变成一道深色缝 */
+    background: #533afd;
   }
 
   .chat-head-text {

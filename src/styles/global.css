@@ -1,61 +1,96 @@
-/* Fluent 2 (Fluent Design) theme — CSS only */
+/*
+ * 字体：Inter（Sohne 的开源近似，见 DESIGN.md「Note on Font Substitutes」）。
+ * 自托管 latin 子集（48KB/档）：站点部署在 Cloudflare，用户群含国内网络，
+ * 外链 Google Fonts 不可达时会静默回退——自托管保证 Stripe 字形恒定。
+ * 中文由系统字体承担（Inter 无中文），字重由合成/系统近似。
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/inter-300.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-400.woff2') format('woff2');
+}
+
+/*
+ * Stripe 视觉语言（token 层）—— 权威规格：
+ * C:\Users\GauTown\.config\opencode\skills\awesome-design-md\design-md\stripe\DESIGN.md
+ * 配色纪律：indigo 仅作填充 CTA / 链接强调（克制）；ink 深海军蓝为正文；
+ * 卡片 = 白底 + hairline 边框 + 蓝色系阴影；圆角 lg 12px / sm 6px；
+ * 数字用 tnum、全局 ss01（见 body）。
+ */
 :root {
-  --bg: #faf9f8;
-  --surface: #ffffff;
-  --foreground: #1b1b1b;
-  --muted: #615f5c;
-  --secondary: #f3f2f1;
-  --accent: #0078d4;
-  --accent-hover: #106ebe;
-  --accent-text: #005a9e;
-  --accent-soft: #e8f4fd;
-  --line: #e0e0e0;
-  --line-strong: #c8c6c4;
-  --shadow-4: 0 1.6px 3.6px rgba(0, 0, 0, 0.05), 0 0.4px 0.8px rgba(0, 0, 0, 0.04);
-  --shadow-8: 0 2.5px 5px rgba(0, 0, 0, 0.06), 0 1.2px 2.4px rgba(0, 0, 0, 0.05);
-  --shadow-16: 0 6.4px 14px rgba(0, 0, 0, 0.12), 0 2.4px 5.6px rgba(0, 0, 0, 0.09);
+  --bg: #f6f9fc;            /* canvas-soft */
+  --surface: #ffffff;       /* canvas */
+  --foreground: #0d253d;    /* ink */
+  --muted: #64748d;         /* ink-mute */
+  --secondary: #eef2f7;     /* hover 浅底（canvas-soft 与 hairline 之间） */
+  --accent: #533afd;        /* primary indigo */
+  --accent-hover: #4434d4;  /* primary-deep */
+  --accent-text: #4434d4;   /* 链接文字 = deep，保证浅底对比度 */
+  --accent-soft: #eae7ff;   /* indigo 极浅衬底（badge 等） */
+  --line: #e3e8ee;          /* hairline */
+  --line-strong: #d5dde5;   /* hairline 派生（重一档的边框） */
+  /* 阴影统一带品牌蓝调：DESIGN.md 的 shadow-blue #003770 低透明度 */
+  --shadow-4: 0 1px 3px rgba(0, 55, 112, 0.08);
+  --shadow-8: 0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04);
+  --shadow-16: 0 12px 32px rgba(0, 55, 112, 0.1), 0 4px 8px rgba(0, 55, 112, 0.05);
   --gold: rgba(255, 213, 79, 0.14);
-  --radius: 8px;
-  --radius-sm: 4px;
-  --radius-pill: 999px;
+  --radius: 12px;           /* rounded.lg（卡片） */
+  --radius-sm: 6px;         /* rounded.sm（输入框/小元素） */
+  --radius-pill: 999px;     /* rounded.pill（全部按钮与标签） */
   color-scheme: light;
 }
 
+/*
+ * 暗色主题映射（规格未覆盖的自主决策，供复审）：
+ * DESIGN.md 只给出"dashboard flips to the dark-app shell"的提示与
+ * brand-dark-900 #1c1e54——暗色基调用它做卡片面、更深一档做页面底，
+ * 整体维持深海军蓝的色相而非中性灰；indigo 在深底上提亮保证对比。
+ */
 :root[data-theme='dark'] {
-  --bg: #202020;
-  --surface: #2f2f2f;
-  --foreground: #f3f2f1;
-  --muted: #a19f9d;
-  --secondary: #3b3a39;
-  --accent: #4cc2ff;
-  --accent-hover: #69d2ff;
-  --accent-text: #8fd3ff;
-  --accent-soft: rgba(76, 194, 255, 0.12);
-  --line: #3b3a39;
-  --line-strong: #4a4946;
-  --shadow-4: 0 1.6px 3.6px rgba(0, 0, 0, 0.35);
-  --shadow-8: 0 2.5px 5px rgba(0, 0, 0, 0.4);
-  --shadow-16: 0 6.4px 14px rgba(0, 0, 0, 0.5);
+  --bg: #101336;
+  --surface: #1c1e54;       /* brand-dark-900 */
+  --foreground: #e8ebf7;
+  --muted: #99a3c9;
+  --secondary: #272a6b;
+  --accent: #8f8aff;
+  --accent-hover: #a6a2ff;
+  --accent-text: #b6b2ff;
+  --accent-soft: rgba(143, 138, 255, 0.14);
+  --line: #2b2f6e;
+  --line-strong: #3b4088;
+  --shadow-4: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-8: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-16: 0 12px 32px rgba(0, 0, 0, 0.5);
   --gold: rgba(255, 213, 79, 0.07);
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #202020;
-    --surface: #2f2f2f;
-    --foreground: #f3f2f1;
-    --muted: #a19f9d;
-    --secondary: #3b3a39;
-    --accent: #4cc2ff;
-    --accent-hover: #69d2ff;
-    --accent-text: #8fd3ff;
-    --accent-soft: rgba(76, 194, 255, 0.12);
-    --line: #3b3a39;
-    --line-strong: #4a4946;
-    --shadow-4: 0 1.6px 3.6px rgba(0, 0, 0, 0.35);
-    --shadow-8: 0 2.5px 5px rgba(0, 0, 0, 0.4);
-    --shadow-16: 0 6.4px 14px rgba(0, 0, 0, 0.5);
+    --bg: #101336;
+    --surface: #1c1e54;
+    --foreground: #e8ebf7;
+    --muted: #99a3c9;
+    --secondary: #272a6b;
+    --accent: #8f8aff;
+    --accent-hover: #a6a2ff;
+    --accent-text: #b6b2ff;
+    --accent-soft: rgba(143, 138, 255, 0.14);
+    --line: #2b2f6e;
+    --line-strong: #3b4088;
+    --shadow-4: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-8: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --shadow-16: 0 12px 32px rgba(0, 0, 0, 0.5);
     --gold: rgba(255, 213, 79, 0.07);
     color-scheme: dark;
   }
@@ -67,11 +102,13 @@
 
 body {
   margin: 0;
-  font-family: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont,
+  font-family: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont,
     'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   background: var(--bg);
   color: var(--foreground);
   line-height: 1.5;
+  /* Stripe 品牌字型细节：ss01 全局开启（DESIGN.md 要求）；数字默认 tnum 由各处 tabular-nums 承担 */
+  font-feature-settings: 'ss01';
   -webkit-font-smoothing: antialiased;
 }
 
@@ -162,18 +199,23 @@ a {
   margin: 0 0 10px;
 }
 
+/*
+ * Display 层字重纪律（Stripe）：weight 300 + 负字距是品牌的排版签名，
+ * 56px 档 -1.4px 按比例缩放（-0.025em ≈ 56px 下 -1.4px）。
+ * 中文回退字体无 300 时由系统合成近似，观感接近。
+ */
 h1 {
   font-size: clamp(32px, 5vw, 56px);
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-weight: 300;
+  letter-spacing: -0.025em;
   line-height: 1.08;
   margin: 0;
 }
 
 h2 {
   font-size: clamp(20px, 3vw, 28px);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-weight: 300;
+  letter-spacing: -0.02em;
   margin: 0;
 }
 
@@ -1079,6 +1121,11 @@ h2 {
   margin-top: 32px;
 }
 
+/*
+ * 按钮系统（Stripe）：全部 pill 圆角 + 8px 16px 级内距；一级 CTA 填充
+ * indigo、次按钮白底 indigo 文字 + indigo 细边框（DESIGN.md 的
+ * button-primary-pill / button-secondary，不允许圆角矩形按钮）。
+ */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -1086,9 +1133,9 @@ h2 {
   text-decoration: none;
   padding: 10px 20px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 400;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   font-family: inherit;
   transition: background 0.15s, border-color 0.15s;
 }
@@ -1104,13 +1151,13 @@ h2 {
 
 .btn-outline {
   background: var(--surface);
-  color: var(--foreground);
-  border-color: var(--line-strong);
+  color: var(--accent-text);
+  border-color: var(--accent);
   box-shadow: var(--shadow-4);
 }
 
 .btn-outline:hover {
-  background: var(--secondary);
+  background: var(--accent-soft);
 }
 
 /* section headers */
@@ -1913,19 +1960,20 @@ h2 {
   gap: 8px;
   width: 100%;
   border: none;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, #ffa45c, #ff7a1a);
+  border-radius: var(--radius-pill);
+  /* Stripe 配色纪律：填充 CTA 只用 indigo（原橙渐变违规） */
+  background: var(--accent);
   color: #fff;
   font-size: 14px;
-  font-weight: 700;
-  padding: 8px;
+  font-weight: 400;
+  padding: 8px 16px;
   text-decoration: none;
   margin-top: 6px;
   font-family: inherit;
 }
 
 .github-cta:hover {
-  filter: brightness(0.96);
+  background: var(--accent-hover);
 }
 
 /* 点赞：随统计条缩为胶囊 chip（原 10px 大宽按钮属旧评分卡布局），交互不变 */
@@ -2478,8 +2526,8 @@ h2 {
   background: var(--accent);
   color: #fff;
   font-size: 13px;
-  font-weight: 600;
-  border-radius: var(--radius-sm);
+  font-weight: 400;
+  border-radius: var(--radius-pill);
   padding: 6px 16px;
   cursor: pointer;
   font-family: inherit;
