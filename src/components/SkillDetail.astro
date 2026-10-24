@@ -349,43 +349,47 @@ const skillMdText = [
         const hasStars = typeof d.stars === 'number'
         if (!hasScore && !hasLike && !hasVote && !hasStars) return null
         const stars = d.stars ?? 0
+        /*
+         * 统一统计条：本地技能（评分/点赞/投票）与远端技能（仓库热度）
+         * 共用同一行式骨架（.stats-strip，各项间以 · 自动分隔）。
+         * 两类页面第一块形态一致 = 同一套 UI；数据有无决定条目多少。
+         * 交互类名（.like-btn/.vote-btn.up/.down + data-seed）保持不变。
+         */
         return (
           <div class="side-block">
-            {hasStars && (
-              <div class="stars-row">
-                <span class="stars-icon">★</span>
-                <span class="stars-num">{stars.toLocaleString()}</span>
-                <span class="stars-label">{usesZhContent(locale) ? '仓库热度' : 'repo stars'}</span>
-              </div>
-            )}
-            {(hasScore || hasLike) && (
-              <div class="score-row">
-                {d.grade && <span class="grade-badge">{gradeLabel}</span>}
-                {d.score != null && (
-                  <div class="score-block">
-                    <div class="score-num">{d.score}</div>
-                    <div class="score-label">{t.aiScore}</div>
-                  </div>
-                )}
-                {hasLike && (
-                  <button class="like-btn" type="button" data-seed={d.likes ?? 0}>
-                    <span class="heart">♡</span>
-                    <span class="like-count">{d.likes ?? 0}</span>
+            <div class="stats-strip">
+              {hasStars && (
+                <span class="strip-item">
+                  <span class="stars-icon">★</span>
+                  <b>{stars.toLocaleString()}</b>
+                  <span class="strip-label">{usesZhContent(locale) ? '仓库热度' : 'repo stars'}</span>
+                </span>
+              )}
+              {d.grade && <span class="grade-badge">{gradeLabel}</span>}
+              {d.score != null && (
+                <span class="strip-item">
+                  <b>{d.score}</b>
+                  <span class="strip-label">{t.aiScore}</span>
+                </span>
+              )}
+              {hasLike && (
+                <button class="like-btn" type="button" data-seed={d.likes ?? 0}>
+                  <span class="heart">♡</span>
+                  <span class="like-count">{d.likes ?? 0}</span>
+                </button>
+              )}
+              {hasVote && (
+                <span class="strip-item strip-votes">
+                  <button class="vote-btn up" type="button" data-seed={d.ratingUp ?? 0}>
+                    <span class="up-count">{d.ratingUp ?? 0}</span> {t.voteUp}
                   </button>
-                )}
-              </div>
-            )}
-            {hasVote && (
-              <div class="rating-row">
-                <button class="vote-btn up" type="button" data-seed={d.ratingUp ?? 0}>
-                  <span class="up-count">{d.ratingUp ?? 0}</span> {t.voteUp}
-                </button>
-                <span class="rating-sep">|</span>
-                <button class="vote-btn down" type="button">
-                  <span class="down-count">0</span> {t.voteDown}
-                </button>
-              </div>
-            )}
+                  <span class="rating-sep">|</span>
+                  <button class="vote-btn down" type="button">
+                    <span class="down-count">0</span> {t.voteDown}
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
         )
       })()}

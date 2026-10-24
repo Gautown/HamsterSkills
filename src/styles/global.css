@@ -1647,37 +1647,55 @@ h2 {
   color: var(--muted);
 }
 
-/* sidebar: grade / score */
-.score-row {
+/*
+ * 右栏统一统计条：本地技能（评分/点赞/投票）与远端技能（仓库热度）
+ * 共用同一行式骨架——两类详情页第一块形态一致，数据有无只决定条目多少。
+ * 项间以 · 自动分隔（::before，不占独立 DOM）；窄栏时整条自动换行。
+ */
+.stats-strip {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
 }
 
-/* 仓库热度：评分/点赞区块无数据时，侧栏仍有真实可展示的指标 */
-.stars-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+.stats-strip > * + *::before {
+  content: '·';
+  margin-right: 8px;
+  color: var(--muted);
+}
+
+/*
+ * 条目类名统一用 strip- 前缀：站点首页已有 .stat/.stat-label 统计卡系统，
+ * 同名会互相污染（padding/display 被首页规则注入，块高从 46px 涨到 127px）。
+ */
+.strip-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.strip-item b {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.strip-label {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .stars-icon {
   color: #f5a623;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.stars-num {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.stars-label {
-  color: var(--muted);
   font-size: 12px;
+  line-height: 1;
+}
+
+.strip-votes {
+  gap: 2px;
 }
 
 /* 评论（Giscus）面板：去掉正文表格/代码块的样式继承，避免影响 Giscus 自身布局 */
@@ -1695,34 +1713,15 @@ h2 {
   padding: 0;
 }
 
+/* 等级徽章：随统计条缩小为 inline 小标识（原 15px 大徽章属旧评分卡布局） */
 .grade-badge {
   background: #ffd52b;
   color: #1a1a1a;
   font-weight: 800;
-  font-size: 15px;
-  padding: 5px 10px;
+  font-size: 11px;
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
   letter-spacing: 0.02em;
-}
-
-.score-block {
-  text-align: right;
-}
-
-.score-num {
-  font-size: 32px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.score-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  margin-top: 4px;
-  text-transform: uppercase;
 }
 
 /* sidebar: actions */
@@ -1929,22 +1928,20 @@ h2 {
   filter: brightness(0.96);
 }
 
+/* 点赞：随统计条缩为胶囊 chip（原 10px 大宽按钮属旧评分卡布局），交互不变 */
 .like-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
+  gap: 5px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   background: var(--surface);
-  padding: 10px;
+  padding: 1px 9px;
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--foreground);
-  box-shadow: var(--shadow-4);
   transition: background 0.15s;
 }
 
@@ -1955,27 +1952,6 @@ h2 {
 .like-btn.liked {
   border-color: #e5484d;
   color: #e5484d;
-}
-
-.side-block.dashed {
-  border-top: 1px dashed var(--line-strong);
-}
-
-.rating-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-/* 投票行现在位于数据区块内部，需与上方留出间距 */
-.side-block .rating-row {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--line);
 }
 
 .rating-sep {
@@ -1990,7 +1966,7 @@ h2 {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  padding: 4px 8px;
+  padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
 
