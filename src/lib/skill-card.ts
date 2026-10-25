@@ -65,6 +65,27 @@ export function searchBlob(item: IndexItem, labels: CardLabels): string {
     .toLowerCase()
 }
 
+/*
+ * 编号格底色：Stripe 渐变色带（DESIGN.md 的 gradient mesh）的六段停靠色对，
+ * 每张卡按 id 稳定分配一段对角渐变。全部为色板内颜色
+ * （cream #f5e9d4 / lemon #9b6829 / subdued #b9b9f9 / soft #665efd /
+ *  primary #533afd / magenta #f96bee / ruby #ea2261 / ink #0d253d）。
+ */
+const RANK_WASHES = ['cream', 'sherbet', 'lavender', 'indigo', 'ruby', 'flare'] as const
+
+/**
+ * 按技能 id 稳定取段（djb2 滚动哈希）。
+ *
+ * 不用真随机：卡片在客户端渲染后会被排序/过滤反复重排（applySort 会重
+ * 写编号文本），若每次刷新/重排都换色，同一张卡的颜色会来回跳变——
+ * 「随机」的观感应来自卡片之间的分布，而不是单张卡的反复无常。
+ */
+export function rankWash(id: string): string {
+  let h = 5381
+  for (let i = 0; i < id.length; i++) h = ((h << 5) + h + id.charCodeAt(i)) >>> 0
+  return RANK_WASHES[h % RANK_WASHES.length]
+}
+
 export function cardHtml(item: IndexItem, rank: number, labels: CardLabels): string {
   const title = usesZhContent(labels.locale) ? item.title : item.titleEn
   const desc = usesZhContent(labels.locale) ? item.desc : item.descEn
@@ -72,7 +93,7 @@ export function cardHtml(item: IndexItem, rank: number, labels: CardLabels): str
   const pills = [
     item.grade ? `<span class="grade-mini g-${escapeHtml(item.grade)}">${escapeHtml(item.grade)}</span>` : '',
     item.score != null ? `<span class="score-mini">${escapeHtml(String(item.score))}</span>` : '',
-    item.gh ? `<span class="pill">${escapeHtml(labels.githubLabel)}</span>` : '',
+    item.gh ? `<span class="pill pill-gh">${escapeHtml(labels.githubLabel)}</span>` : '',
     item.prompt ? `<span class="pill">${escapeHtml(labels.copyPrompt)}</span>` : '',
   ].join('')
   const tags = item.tags.length
@@ -84,7 +105,7 @@ export function cardHtml(item: IndexItem, rank: number, labels: CardLabels): str
     ` data-search="${escapeHtml(searchBlob(item, labels))}"` +
     ` data-score="${Number(item.score) || 0}" data-likes="${Number(item.likes) || 0}">` +
     `<a class="card-link" href="${labels.base}/skills/${escapeHtml(item.id)}">` +
-    `<div class="card-head"><div class="card-rank">${String(rank).padStart(2, '0')}</div>` +
+    `<div class="card-head"><div class="card-rank rw-${rankWash(item.id)}">${String(rank).padStart(2, '0')}</div>` +
     `<div class="card-head-main">${pills}</div></div>` +
     `<div class="card-body"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(desc)}</p>${tags}</div>` +
     `<div class="card-foot"><span class="foot-cat">${escapeHtml(catNames[item.category] ?? item.category)}</span>` +

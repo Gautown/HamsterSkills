@@ -1284,6 +1284,12 @@ h2 {
   border-bottom: 1px solid var(--line);
 }
 
+/*
+ * 编号格：Stripe 渐变色带六段式（DESIGN.md gradient mesh 的停靠色对，
+ * 段名由 skill-card.ts / SkillCard.astro 按 id 哈希注入 rw-* 类）。
+ * 每段都是色板内颜色的对角渐变；文字色按段固定（浅段用 ink、深段用白）
+ * 保证对比。渐变是氛围装饰，与 Stripe 图表色一样双主题共用。
+ */
 .card-rank {
   width: 56px;
   flex-shrink: 0;
@@ -1291,11 +1297,39 @@ h2 {
   align-items: center;
   justify-content: center;
   border-right: 1px solid var(--line);
-  background: var(--secondary);
+  background: linear-gradient(135deg, #f5e9d4, #b9b9f9);
   font-size: 18px;
   font-weight: 600;
-  color: var(--muted);
+  color: #0d253d;
   font-variant-numeric: tabular-nums;
+}
+
+/* cream → lemon：暖雪糕段 */
+.card-rank.rw-sherbet {
+  background: linear-gradient(135deg, #f5e9d4, #9b6829);
+}
+
+/* subdued → soft：薰衣草进靛蓝段 */
+.card-rank.rw-lavender {
+  background: linear-gradient(135deg, #b9b9f9, #665efd);
+}
+
+/* soft → primary：品牌靛蓝段，白字 */
+.card-rank.rw-indigo {
+  background: linear-gradient(135deg, #665efd, #533afd);
+  color: #fff;
+}
+
+/* magenta → ruby：品红进玫红段，白字 */
+.card-rank.rw-ruby {
+  background: linear-gradient(135deg, #f96bee, #ea2261);
+  color: #fff;
+}
+
+/* primary → ruby：色带全跨度，Stripe 招牌渐变，白字 */
+.card-rank.rw-flare {
+  background: linear-gradient(135deg, #533afd, #ea2261);
+  color: #fff;
 }
 
 .card-head-main {
@@ -1354,6 +1388,16 @@ h2 {
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   padding: 2px 10px;
+}
+
+/*
+ * 「GitHub 仓库」标签：Stripe 品牌实心药丸（DESIGN.md primary #533afd，
+ * on-primary 白字）。双主题同色——暗色轨道上的品牌色不换档。
+ */
+.pill-gh {
+  background: #533afd;
+  border-color: transparent;
+  color: #fff;
 }
 
 .tags {

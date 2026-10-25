@@ -4,6 +4,7 @@ import { CATEGORY_NAMES, type CategoryKey } from '../lib/categories'
 import { T, type Locale } from '../i18n/translations'
 import { baseOf } from '../lib/site-paths'
 import { usesZhContent } from '../lib/languages'
+import { rankWash } from '../lib/skill-card'
 
 interface Props {
   entry: CollectionEntry<'skills'>
@@ -45,11 +46,11 @@ const searchBlob = [
 <li class="card" data-category={d.category} data-search={searchBlob} data-score={d.score ?? 0} data-likes={d.likes ?? 0}>
   <a class="card-link" href={`${base}/skills/${entry.id}`}>
     <div class="card-head">
-      <div class="card-rank">{String(rank).padStart(2, '0')}</div>
+      <div class={`card-rank rw-${rankWash(entry.id)}`}>{String(rank).padStart(2, '0')}</div>
       <div class="card-head-main">
         {d.grade && <span class={`grade-mini g-${d.grade}`}>{d.grade}</span>}
         {d.score != null && <span class="score-mini">{d.score}</span>}
-        {d.github && <span class="pill">{t.githubLabel}</span>}
+        {d.github && <span class="pill pill-gh">{t.githubLabel}</span>}
         {d.prompt && <span class="pill">{t.copyPrompt}</span>}
       </div>
     </div>
