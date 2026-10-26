@@ -12,6 +12,6 @@ const lang = localeFromParams(Astro.params.lang)
 const skills = await getCollection('skills')
 ---
 
-<Layout lang={lang} path={`${LANG_META[lang].base}/`}>
+<Layout lang={lang} path={`${LANG_META[lang].base}/`} ezAds>
   <HomePage locale={lang} skills={skills} />
 </Layout>

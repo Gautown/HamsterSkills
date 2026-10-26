@@ -34,9 +34,15 @@ interface Props {
     category?: string
     description?: string
   }
+  /**
+   * 开启 Ezoic 广告集成（JS Standalone 模式）。仅首页与技能详情页传 true：
+   * 本站走 Cloudflare Workers 部署，不能改用 Ezoic 的 DNS 代理集成
+   * （那会接管全部流量、绕过 Worker），JS 集成是官方给非 WordPress 站的标准路径。
+   */
+  ezAds?: boolean
 }
 
-const { lang, title, description, path, ogType, noindex, i18n, cards, skill } = Astro.props
+const { lang, title, description, path, ogType, noindex, i18n, cards, skill, ezAds } = Astro.props
 const t = T[lang]
 
 /*
@@ -88,6 +94,30 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
       } catch {}
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    {/*
+      Ezoic 广告集成（JS Standalone，官方非 WordPress 路径）。加载顺序是硬要求：
+      CMP 隐私脚本必须先于任何广告/统计代码；sa.min.js 为广告库本体（async），
+      其后的内联脚本同步建好 ezstandalone 命令队列——async 脚本完成前队列必已就绪。
+      Side Rails（宽屏两侧闲置边栏的竖幅）由 Ezoic 平台自动渲染，无站内占位符；
+      无参 showAds() 只刷新自动格式，不产生正文内广告位。
+      按产品要求只保留最左一条侧轨，右侧用 config 关闭（删掉该行即恢复双侧）。
+    */}
+    {ezAds && (
+      <>
+        <script is:inline data-cfasync="false" src="https://cmp.gatekeeperconsent.com/min.js"></script>
+        <script is:inline data-cfasync="false" src="https://the.gatekeeperconsent.com/cmp.min.js"></script>
+        <script is:inline async src="//www.ezojs.com/ezoic/sa.min.js"></script>
+        <script is:inline>
+          window.ezstandalone = window.ezstandalone || {}
+          ezstandalone.cmd = ezstandalone.cmd || []
+          ezstandalone.cmd.push(function () {
+            ezstandalone.config({ disableRightSideRail: true })
+            ezstandalone.showAds()
+          })
+        </script>
+        <script is:inline src="//ezoicanalytics.com/analytics.js"></script>
+      </>
+    )}
     {noindex && <meta name="robots" content="noindex, follow" />}
     <meta name="description" content={pageDesc} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

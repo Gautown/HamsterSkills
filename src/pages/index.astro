@@ -6,6 +6,6 @@ import HomePage from '../components/HomePage.astro'
 const skills = await getCollection('skills')
 ---
 
-<Layout lang="zh" path="/">
+<Layout lang="zh" path="/" ezAds>
   <HomePage locale="zh" skills={skills} />
 </Layout>
