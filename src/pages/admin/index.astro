@@ -1,0 +1,439 @@
+---
+/**
+ * 管理后台页面（仅站长使用）。
+ *
+ * - 挂在简中根路径 /admin/，由 zh Worker 的静态资产服务
+ *  （split-assets.mjs：根路径页面全部落在 dist-zh）。
+ * - 三重防索引：noindex meta（Layout prop）+ robots.txt Disallow + sitemap filter。
+ * - 纯浏览器端单页：所有数据经 /api/admin/*（Worker 端点，见 src/worker/admin.ts），
+ *   页面本身零机密——没登录只能看到一张登录卡。
+ * - 首次使用：未初始化时展开「首次初始化」，需要 ADMIN_SETUP_KEY
+ *   （wrangler secret），防止陌生人抢注管理员。
+ */
+import Layout from '../../layouts/Layout.astro'
+---
+
+<Layout lang="zh" title="管理后台" path="/admin/" noindex>
+  <div class="admin-wrap">
+    <h1 class="admin-h1">管理后台</h1>
+    <p class="admin-sub">站点参数与广告模块配置 · 仅站长使用</p>
+
+    <section class="admin-card" id="auth-card">
+      <h2 class="admin-h2">登录</h2>
+      <form id="login-form" class="admin-form" autocomplete="off">
+        <label class="admin-label">
+          <span>账户</span>
+          <input name="username" required maxlength="32" autocomplete="username" />
+        </label>
+        <label class="admin-label">
+          <span>密码</span>
+          <input name="password" type="password" required maxlength="128" autocomplete="current-password" />
+        </label>
+        <button class="admin-btn" type="submit">登录</button>
+        <p class="admin-msg" id="login-msg" role="status"></p>
+      </form>
+
+      <details class="admin-setup">
+        <summary>首次初始化（需要引导密钥）</summary>
+        <form id="setup-form" class="admin-form" autocomplete="off">
+          <label class="admin-label">
+            <span>引导密钥 ADMIN_SETUP_KEY</span>
+            <input name="setupKey" type="password" required autocomplete="off" />
+          </label>
+          <label class="admin-label">
+            <span>账户</span>
+            <input name="username" required maxlength="32" autocomplete="username" />
+          </label>
+          <label class="admin-label">
+            <span>密码（8-128 位）</span>
+            <input name="password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" />
+          </label>
+          <button class="admin-btn" type="submit">创建管理员</button>
+          <p class="admin-msg" id="setup-msg" role="status"></p>
+        </form>
+      </details>
+    </section>
+
+    <section class="admin-card" id="panel" hidden>
+      <div class="admin-panel-head">
+        <h2 class="admin-h2">控制台 <span class="admin-who" id="who"></span></h2>
+        <button id="logout-btn" class="admin-btn admin-btn-ghost" type="button">登出</button>
+      </div>
+
+      <form id="site-form" class="admin-form">
+        <h3 class="admin-h3">站点参数</h3>
+        <p class="admin-hint">留空的字段沿用构建期默认值；改动对全站五语言即时生效（页面缓存约 2-5 分钟）。</p>
+        <label class="admin-label">
+          <span>站点名称</span>
+          <input name="name" maxlength="40" placeholder="如：仓鼠AI技能库" />
+        </label>
+        <label class="admin-label">
+          <span>站点描述</span>
+          <input name="desc" maxlength="120" placeholder="页脚与展示用一句话介绍" />
+        </label>
+        <label class="admin-label">
+          <span>页脚备注</span>
+          <input name="footerNote" maxlength="80" placeholder="替换页脚右侧的 Built with Astro" />
+        </label>
+
+        <h3 class="admin-h3">广告模块（Ezoic）</h3>
+        <p class="admin-hint">Side Rails 为宽屏两侧闲置边栏竖幅，仅首页与技能详情页候选。</p>
+        <label class="admin-check">
+          <input name="adsEnabled" type="checkbox" />
+          <span>启用广告（总开关）</span>
+        </label>
+        <label class="admin-label">
+          <span>Side Rails</span>
+          <select name="sideRails">
+            <option value="left">仅左侧</option>
+            <option value="both">左右两侧</option>
+            <option value="off">关闭</option>
+          </select>
+        </label>
+        <label class="admin-check">
+          <input name="anchor" type="checkbox" />
+          <span>底部 Anchor 横幅</span>
+        </label>
+        <label class="admin-check">
+          <input name="vignette" type="checkbox" />
+          <span>插屏（Vignette）</span>
+        </label>
+        <button class="admin-btn" type="submit">保存配置</button>
+        <p class="admin-msg" id="site-msg" role="status"></p>
+      </form>
+
+      <form id="cred-form" class="admin-form">
+        <h3 class="admin-h3">修改账户</h3>
+        <label class="admin-label">
+          <span>当前密码</span>
+          <input name="currentPassword" type="password" required autocomplete="current-password" />
+        </label>
+        <label class="admin-label">
+          <span>新账户（留空不改）</span>
+          <input name="username" maxlength="32" autocomplete="username" />
+        </label>
+        <label class="admin-label">
+          <span>新密码（留空不改）</span>
+          <input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" />
+        </label>
+        <button class="admin-btn" type="submit">更新账户</button>
+        <p class="admin-msg" id="cred-msg" role="status"></p>
+      </form>
+    </section>
+  </div>
+</Layout>
+
+<style>
+  .admin-wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 48px 20px 96px;
+  }
+  .admin-h1 {
+    font-size: 26px;
+    font-weight: 300;
+    letter-spacing: -0.26px;
+    margin: 0 0 4px;
+  }
+  .admin-sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0 0 28px;
+  }
+  .admin-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: rgba(0, 55, 112, 0.08) 0 1px 3px;
+  }
+  .admin-h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 16px;
+  }
+  .admin-h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 24px 0 4px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .admin-h3:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .admin-hint {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 0 0 14px;
+  }
+  .admin-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .admin-label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--ink-secondary, var(--muted));
+  }
+  .admin-label span {
+    font-weight: 500;
+  }
+  .admin-form input,
+  .admin-form select {
+    font: inherit;
+    font-size: 14px;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: inherit;
+    outline: none;
+  }
+  .admin-form input:focus-visible,
+  .admin-form select:focus-visible {
+    border-color: var(--brand, #533afd);
+    box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.15);
+  }
+  .admin-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .admin-check input {
+    width: 16px;
+    height: 16px;
+    accent-color: #533afd;
+  }
+  .admin-btn {
+    align-self: flex-start;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    color: #fff;
+    background: #533afd;
+    border: 0;
+    border-radius: var(--radius-pill, 999px);
+    padding: 9px 20px;
+    cursor: pointer;
+  }
+  .admin-btn:hover {
+    background: #4434d4;
+  }
+  .admin-btn-ghost {
+    background: transparent;
+    color: var(--ink-secondary, var(--muted));
+    border: 1px solid var(--line);
+  }
+  .admin-btn-ghost:hover {
+    background: var(--surface);
+    color: inherit;
+  }
+  .admin-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .admin-panel-head .admin-h2 {
+    margin: 0;
+  }
+  .admin-who {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 400;
+  }
+  .admin-msg {
+    min-height: 1.2em;
+    margin: 0;
+    font-size: 13px;
+    color: #b3261e;
+  }
+  .admin-msg.is-ok {
+    color: #1a7f37;
+  }
+  .admin-setup {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .admin-setup summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .admin-setup[open] .admin-form {
+    margin-top: 14px;
+  }
+</style>
+
+<script>
+  /**
+   * 管理后台交互：
+   * - 会话探针决定显示登录卡还是控制台；
+   * - 所有写操作走 /api/admin/*，凭 HttpOnly 会话 cookie；
+   * - 本地预览（无 Worker）时所有请求 404，页面停在登录卡——预期行为。
+   */
+  type Json = Record<string, unknown>
+
+  const $ = <T extends HTMLElement>(sel: string): T => document.querySelector(sel) as T
+  const field = (form: HTMLFormElement, name: string): HTMLInputElement =>
+    form.elements.namedItem(name) as HTMLInputElement
+
+  async function api(path: string, init: RequestInit = {}): Promise<{ ok: boolean; data: Json }> {
+    const res = await fetch(path, { credentials: 'same-origin', ...init })
+    let data: Json = {}
+    try {
+      data = (await res.json()) as Json
+    } catch {
+      /* 非 JSON 响应（如静态服务器直接 404）按空对象处理 */
+    }
+    return { ok: res.ok, data }
+  }
+
+  function say(id: string, text: string, ok = false) {
+    const el = $(`#${id}`)
+    el.textContent = text
+    el.classList.toggle('is-ok', ok)
+  }
+
+  function errMsg(data: Json, fallback: string): string {
+    return typeof data.error === 'string' ? data.error : fallback
+  }
+
+  /* ------------------------------ 登录 / 初始化 ------------------------------ */
+
+  $('#login-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    const form = e.currentTarget as HTMLFormElement
+    const { ok, data } = await api('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: String(field(form, 'username').value),
+        password: String(field(form, 'password').value),
+      }),
+    })
+    if (!ok) {
+      say('login-msg', errMsg(data, '登录失败'))
+      if (data.needSetup) say('login-msg', '管理员尚未初始化，请展开下方「首次初始化」创建账户')
+      return
+    }
+    enterPanel(String(data.username ?? ''))
+  })
+
+  $('#setup-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    const form = e.currentTarget as HTMLFormElement
+    const { ok, data } = await api('/api/admin/setup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-setup-key': String(field(form, 'setupKey').value),
+      },
+      body: JSON.stringify({
+        username: String(field(form, 'username').value),
+        password: String(field(form, 'password').value),
+      }),
+    })
+    if (!ok) {
+      say('setup-msg', errMsg(data, '初始化失败'))
+      return
+    }
+    say('setup-msg', '管理员已创建，请收起此面板并登录', true)
+  })
+
+  /* ------------------------------ 控制台 ------------------------------ */
+
+  function enterPanel(username: string) {
+    $('#auth-card').hidden = true
+    $('#panel').hidden = false
+    $('#who').textContent = `· ${username}`
+    void loadConfig()
+  }
+
+  async function loadConfig() {
+    const { ok, data } = await api('/api/admin/config')
+    if (!ok) {
+      // 会话刚失效：回到登录卡
+      $('#panel').hidden = true
+      $('#auth-card').hidden = false
+      say('login-msg', errMsg(data, '会话已过期，请重新登录'))
+      return
+    }
+    const cfg = (data.config ?? {}) as { site?: Record<string, unknown>; ads?: Record<string, unknown> }
+    const form = $('#site-form') as HTMLFormElement
+    field(form, 'name').value = typeof cfg.site?.name === 'string' ? cfg.site.name : ''
+    field(form, 'desc').value = typeof cfg.site?.desc === 'string' ? cfg.site.desc : ''
+    field(form, 'footerNote').value = typeof cfg.site?.footerNote === 'string' ? cfg.site.footerNote : ''
+    field(form, 'adsEnabled').checked = cfg.ads?.enabled !== false
+    field(form, 'sideRails').value = typeof cfg.ads?.sideRails === 'string' ? cfg.ads.sideRails : 'left'
+    field(form, 'anchor').checked = cfg.ads?.anchor === true
+    field(form, 'vignette').checked = cfg.ads?.vignette === true
+  }
+
+  $('#site-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    const form = e.currentTarget as HTMLFormElement
+    const { ok, data } = await api('/api/admin/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        site: {
+          name: field(form, 'name').value,
+          desc: field(form, 'desc').value,
+          footerNote: field(form, 'footerNote').value,
+        },
+        ads: {
+          enabled: field(form, 'adsEnabled').checked,
+          sideRails: field(form, 'sideRails').value,
+          anchor: field(form, 'anchor').checked,
+          vignette: field(form, 'vignette').checked,
+        },
+      }),
+    })
+    say('site-msg', ok ? '已保存，约 2-5 分钟内全站生效' : errMsg(data, '保存失败'), ok)
+  })
+
+  $('#cred-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    const form = e.currentTarget as HTMLFormElement
+    const { ok, data } = await api('/api/admin/credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        currentPassword: field(form, 'currentPassword').value,
+        username: field(form, 'username').value,
+        newPassword: field(form, 'newPassword').value,
+      }),
+    })
+    if (!ok) {
+      say('cred-msg', errMsg(data, '更新失败'))
+      return
+    }
+    say('cred-msg', '账户已更新', true)
+    field(form, 'currentPassword').value = ''
+    field(form, 'username').value = ''
+    field(form, 'newPassword').value = ''
+  })
+
+  $('#logout-btn').addEventListener('click', async () => {
+    await api('/api/admin/logout', { method: 'POST' })
+    location.reload()
+  })
+
+  /* ------------------------------ 启动 ------------------------------ */
+
+  ;(async () => {
+    const { ok, data } = await api('/api/admin/session')
+    if (ok) enterPanel(String(data.username ?? ''))
+  })()
+</script>

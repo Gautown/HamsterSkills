@@ -43,6 +43,12 @@
     {
       "binding": "CHAT_QUOTA",
       "id": "4a8aabdd830f4a28b1cfaf12b00e77ad"
+    },
+    {
+      // 管理后台存储：凭据/会话/站点配置。与 CHAT_QUOTA 共用同一 namespace，
+      // 键前缀（cfg: / adm:）与聊天计数互不相扰——省一次建 namespace 的人工步骤
+      "binding": "SITE_KV",
+      "id": "4a8aabdd830f4a28b1cfaf12b00e77ad"
     }
   ],
   "observability": {

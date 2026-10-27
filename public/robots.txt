@@ -7,3 +7,6 @@ Sitemap: https://skill.gautown.top/sitemap-index.xml
 
 # 安装下载通道：给 skills CLI 抓取 SKILL.md 用，搜索引擎无需索引原始 md
 Disallow: /dl/
+
+# 管理后台：站长专用，禁止索引
+Disallow: /admin/

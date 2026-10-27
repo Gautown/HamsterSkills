@@ -35,9 +35,9 @@ interface Props {
     description?: string
   }
   /**
-   * 开启 Ezoic 广告集成（JS Standalone 模式）。仅首页与技能详情页传 true：
-   * 本站走 Cloudflare Workers 部署，不能改用 Ezoic 的 DNS 代理集成
-   * （那会接管全部流量、绕过 Worker），JS 集成是官方给非 WordPress 站的标准路径。
+   * 该页面允许 Ezoic 广告（首页与技能详情页）。站点配置运行时加载器
+   *（见 head 中的 sitecfg 脚本）按后台开关决定是否真正注入广告脚本，
+   * 此 prop 只圈定「候选广告页」，不控制开关本身。
    */
   ezAds?: boolean
 }
@@ -95,29 +95,82 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     {/*
-      Ezoic 广告集成（JS Standalone，官方非 WordPress 路径）。加载顺序是硬要求：
-      CMP 隐私脚本必须先于任何广告/统计代码；sa.min.js 为广告库本体（async），
-      其后的内联脚本同步建好 ezstandalone 命令队列——async 脚本完成前队列必已就绪。
-      Side Rails（宽屏两侧闲置边栏的竖幅）由 Ezoic 平台自动渲染，无站内占位符；
-      无参 showAds() 只刷新自动格式，不产生正文内广告位。
-      按产品要求只保留最左一条侧轨，右侧用 config 关闭（删掉该行即恢复双侧）。
+      站点配置运行时加载器（全站页面，管理后台 /admin/ 写 KV、本脚本读 API）：
+      - 站点参数（名称/描述/页脚备注）由它拉取 /api/site-config 覆盖
+        [data-site-name] 等锚点；localStorage 镜像 5 分钟，多数页面零网络请求。
+      - Ezoic 广告（ezAds 页面）也由配置驱动：总开关/Side Rails 方向/
+        anchor/插屏决定是否注入官方脚本与 config 标志。
+        脚本注入顺序保持官方要求 CMP → sa.min.js → 命令队列 → analytics，
+        动态创建的 script 默认乱序执行，async=false 强制按序。
+      - API 不可用/未配置时走内置基线：广告开、仅左侧 Side Rail、
+        无 anchor/插屏——与后台从未配置时的站点现状一致。
     */}
-    {ezAds && (
-      <>
-        <script is:inline data-cfasync="false" src="https://cmp.gatekeeperconsent.com/min.js"></script>
-        <script is:inline data-cfasync="false" src="https://the.gatekeeperconsent.com/cmp.min.js"></script>
-        <script is:inline async src="//www.ezojs.com/ezoic/sa.min.js"></script>
-        <script is:inline>
-          window.ezstandalone = window.ezstandalone || {}
-          ezstandalone.cmd = ezstandalone.cmd || []
-          ezstandalone.cmd.push(function () {
-            ezstandalone.config({ disableRightSideRail: true })
-            ezstandalone.showAds()
-          })
-        </script>
-        <script is:inline src="//ezoicanalytics.com/analytics.js"></script>
-      </>
-    )}
+    <script is:inline data-ads={ezAds ? '1' : '0'}>
+      (function () {
+        var KEY = 'hamster:sitecfg', TTL_MS = 300000
+        var adsWanted = document.currentScript.getAttribute('data-ads') === '1'
+        var cached = null
+        try {
+          var raw = localStorage.getItem(KEY)
+          if (raw) {
+            var c = JSON.parse(raw)
+            if (c && typeof c._t === 'number' && Date.now() - c._t < TTL_MS) cached = c
+          }
+        } catch (e) {}
+        if (adsWanted) injectAds(cached && cached.ads)
+        fetch('/api/site-config').then(function (r) {
+          return r.ok ? r.json() : null
+        }).then(function (fresh) {
+          if (!fresh || fresh.error) return
+          fresh._t = Date.now()
+          try { localStorage.setItem(KEY, JSON.stringify(fresh)) } catch (e) {}
+          applyText(fresh.site)
+        }).catch(function () {})
+
+        function injectAds(ads) {
+          if (ads && ads.enabled === false) return
+          var side = (ads && ads.sideRails) || 'left'
+          var flags = []
+          if (side === 'off') flags.push('disableLeftSideRail:true', 'disableRightSideRail:true')
+          else if (side === 'left') flags.push('disableRightSideRail:true')
+          if (!ads || ads.vignette !== true) flags.push('disableInterstitial:true')
+          var anchor = !!(ads && ads.anchor)
+          var d = document
+          function add(src) {
+            var s = d.createElement('script')
+            s.async = false
+            s.setAttribute('data-cfasync', 'false')
+            s.src = src
+            d.head.appendChild(s)
+          }
+          add('https://cmp.gatekeeperconsent.com/min.js')
+          add('https://the.gatekeeperconsent.com/cmp.min.js')
+          add('//www.ezojs.com/ezoic/sa.min.js')
+          var q = d.createElement('script')
+          q.async = false
+          q.textContent = 'window.ezstandalone=window.ezstandalone||{};ezstandalone.cmd=ezstandalone.cmd||[];'
+            + 'ezstandalone.cmd.push(function(){ezstandalone.setEzoicAnchorAd(' + anchor + ');'
+            + 'ezstandalone.config({' + flags.join(',') + '});ezstandalone.showAds()})'
+          d.head.appendChild(q)
+          add('//ezoicanalytics.com/analytics.js')
+        }
+
+        function applyText(site) {
+          if (!site) return
+          var slots = [
+            ['name', '[data-site-name]'],
+            ['desc', '[data-site-desc]'],
+            ['footerNote', '[data-footer-note]'],
+          ]
+          for (var i = 0; i < slots.length; i++) {
+            var key = slots[i][0]
+            if (typeof site[key] !== 'string' || !site[key]) continue
+            var els = document.querySelectorAll(slots[i][1])
+            for (var j = 0; j < els.length; j++) els[j].textContent = site[key]
+          }
+        }
+      })()
+    </script>
     {noindex && <meta name="robots" content="noindex, follow" />}
     <meta name="description" content={pageDesc} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

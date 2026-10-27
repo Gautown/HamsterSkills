@@ -5,18 +5,25 @@
  * - POST /api/refresh：手动触发（需 Bearer REFRESH_SECRET，带频率限制）
  * - GET  /api/refresh-status：查询最近一次刷新工作流状态（需 Bearer REFRESH_SECRET）
  * - POST /api/chat：站内聊天窗的后端代理（见 chat.ts）
+ * - GET  /api/site-config：站点展示参数 + 广告开关（公开，管理后台写入）
+ * - /api/admin/*：管理后台（登录/会话/配置/凭据，见 admin.ts）
  *
  * 所需 Secrets（wrangler secret put）：
  *   GITHUB_TOKEN    具有 workflow 权限的 PAT（触发 Actions 用）
  *   REFRESH_SECRET  手动刷新端点的共享密钥
  *   AI_API_KEY      聊天端点调用 LLM 用（绝不能进前端代码）
+ *   ADMIN_SETUP_KEY 后台首次初始化的引导密钥（不配置则初始化通道关闭）
  * Vars（wrangler.jsonc）：
  *   GITHUB_REPO     形如 owner/repo
  *   AI_API_BASE / AI_MODEL / CHAT_RATE_LIMIT / CHAT_DAILY_LIMIT
+ * KV 绑定：
+ *   CHAT_QUOTA  聊天限额计数
+ *   SITE_KV     管理后台（凭据/会话/站点配置），与 CHAT_QUOTA 共用 namespace
  */
 import { handleChat } from './chat'
 import type { KvNamespace } from './chat'
 import { authorized } from './refresh-auth'
+import { handleAdminApi } from './admin'
 
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> }
@@ -29,6 +36,8 @@ interface Env {
   CHAT_RATE_LIMIT?: string
   CHAT_DAILY_LIMIT?: string
   CHAT_QUOTA?: KvNamespace
+  SITE_KV?: KvNamespace
+  ADMIN_SETUP_KEY?: string
 }
 
 interface Ctx {
@@ -116,6 +125,9 @@ function rateLimited(request: Request): boolean {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url)
+    if (pathname === '/api/site-config' || pathname.startsWith('/api/admin/')) {
+      return handleAdminApi(request, env)
+    }
     if (pathname === '/api/refresh') {
       if (request.method !== 'POST') return json({ error: '仅支持 POST' }, 405)
       if (!authorized(request, env)) return json({ error: '未授权' }, 401)

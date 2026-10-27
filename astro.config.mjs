@@ -54,6 +54,8 @@ export default defineConfig({
   site,
   integrations: [
     sitemap({
+      // 管理后台不进 sitemap（页面自身也带 noindex + robots 屏蔽）
+      filter: (page) => !page.includes('/admin/'),
       // 与 astro.i18n 的路由一一对应：sitemap 会为每条 URL 生成
       // 五语言的 hreflang 互指，与页面 <head> 里的声明保持一致
       i18n: {
