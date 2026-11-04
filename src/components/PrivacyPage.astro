@@ -1,0 +1,168 @@
+---
+/**
+ * 隐私政策页（五语言共用）。
+ *
+ * 内容与站点实际数据处理一一对应，不写套话：
+ *   - localStorage：hamster:theme（主题）、hamster:sitecfg（配置缓存）、
+ *     技能页点赞/投票状态
+ *   - Cookie：仅管理后台会话 hamster_admin（普通访客不会获得）
+ *   - 聊天助手：转发第三方 AI + 按 IP 短时限流，不落库
+ *   - 广告：Ezoic（个性化/测量 + 同意管理平台），含 Ezoic 要求的披露
+ *     段落与两个规范链接（隐私政策 / 广告合作伙伴）
+ *   - 第三方：Cloudflare / Ezoic / AI 服务商 / GitHub（含 giscus 讨论区）
+ *
+ * 上线 Ezoic 前请对照其后台（pubdash → privacy policy）给出的指定措辞
+ * 校对 privacyAdsBody；如有出入，改对应语言词条即可。
+ */
+import Layout from '../layouts/Layout.astro'
+import { T, type Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
+
+interface Props {
+  lang: Locale
+}
+
+const { lang } = Astro.props
+const t = T[lang]
+const base = baseOf(lang)
+
+/** 政策版本日期（ISO 格式，各语言通用）；修订政策时更新这里 */
+const UPDATED = '2026-11-04'
+const REPO_ISSUES = 'https://github.com/Gautown/HamsterSkills/issues'
+const EZOIC_POLICY = 'https://www.ezoic.com/privacy-policy'
+const EZOIC_PARTNERS = 'https://www.ezoic.com/ad-partners'
+---
+
+<Layout lang={lang} title={t.privacyTitle} description={t.privacyDesc} path={`${base}/privacy/`}>
+  <div class="container privacy-wrap">
+    <header class="privacy-head">
+      <h1>{t.privacyTitle}</h1>
+      <p class="privacy-sub">{t.privacySub}</p>
+      <p class="privacy-updated">{t.privacyUpdatedLabel} <time datetime={UPDATED}>{UPDATED}</time></p>
+    </header>
+
+    <section class="privacy-card">
+      <h2>{t.privacyDataTitle}</h2>
+      <p>{t.privacyDataBody}</p>
+    </section>
+
+    <section class="privacy-card">
+      <h2>{t.privacyCookiesTitle}</h2>
+      <p>{t.privacyCookiesBody}</p>
+    </section>
+
+    <section class="privacy-card">
+      <h2>{t.privacyChatTitle}</h2>
+      <p>{t.privacyChatBody}</p>
+    </section>
+
+    <section class="privacy-card">
+      <h2>{t.privacyAdsTitle}</h2>
+      <p>{t.privacyAdsBody}</p>
+      <p class="privacy-links">
+        <a href={EZOIC_POLICY} target="_blank" rel="noopener">{t.privacyEzoicPolicy} ↗</a>
+        <a href={EZOIC_PARTNERS} target="_blank" rel="noopener">{t.privacyEzoicPartners} ↗</a>
+      </p>
+    </section>
+
+    <section class="privacy-card">
+      <h2>{t.privacyThirdTitle}</h2>
+      <p>{t.privacyThirdBody}</p>
+    </section>
+
+    <section class="privacy-card">
+      <h2>{t.privacyRetentionTitle}</h2>
+      <p>{t.privacyRetentionBody}</p>
+    </section>
+
+    <section class="privacy-card">
+      <h2>{t.privacyRightsTitle}</h2>
+      <p>{t.privacyRightsBody}</p>
+    </section>
+
+    <section class="privacy-card">
+      <h2>{t.privacyChangesTitle}</h2>
+      <p>{t.privacyChangesBody}</p>
+    </section>
+
+    <section class="privacy-card">
+      <h2>{t.privacyContactTitle}</h2>
+      <p>{t.privacyContactBody}</p>
+      <a class="btn btn-filled" href={REPO_ISSUES} target="_blank" rel="noopener">{t.contactGithubAction}</a>
+    </section>
+
+    <div class="privacy-cta">
+      <a class="btn btn-outline" href={`${base}/about`}>{t.navAbout} →</a>
+      <a class="btn btn-outline" href={`${base}/contact`}>{t.navContact}</a>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .privacy-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 20px 96px;
+  }
+  .privacy-head h1 {
+    font-size: 32px;
+    font-weight: 300;
+    letter-spacing: -0.64px;
+    margin: 0 0 12px;
+  }
+  .privacy-sub {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.75;
+    margin: 0 0 8px;
+  }
+  .privacy-updated {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 0 0 28px;
+  }
+  .privacy-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .privacy-card h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 10px;
+  }
+  .privacy-card p {
+    font-size: 14px;
+    line-height: 1.85;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  .privacy-card p:last-of-type {
+    margin-bottom: 0;
+  }
+  .privacy-card .btn {
+    margin-top: 10px;
+  }
+  .privacy-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 12px !important;
+  }
+  .privacy-links a {
+    color: var(--accent-text);
+    font-size: 13px;
+    text-decoration: none;
+  }
+  .privacy-links a:hover {
+    text-decoration: underline;
+  }
+  .privacy-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 28px;
+  }
+</style>

@@ -72,6 +72,40 @@ export const T = {
     contactGithubAction: '前往仓库 →',
     contactCopyrightTitle: '版权与更正',
     contactCopyrightBody: '若发现内容侵犯了你的版权或信息有误，请通过仓库 Issue 告知，我们会尽快处理。',
+    // 隐私政策页
+    navPrivacy: '隐私政策',
+    privacyTitle: '隐私政策',
+    privacyDesc: '仓鼠AI技能库隐私政策：我们如何处理本地存储、聊天助手、广告与第三方服务相关的数据。',
+    privacySub: '本页说明你在使用本站时，哪些数据会被处理、如何被处理，以及你可以如何控制它们。',
+    privacyUpdatedLabel: '最后更新：',
+    privacyDataTitle: '浏览器本地存储',
+    privacyDataBody:
+      '本站会在你的浏览器本地保存少量数据，用于记住你的偏好：主题模式（深色/浅色）、站点参数缓存、以及技能页上的点赞与投票状态。这些数据只存在你的设备上、不会上传服务器；清除浏览器数据即可一并删除。',
+    privacyCookiesTitle: 'Cookie 与类似技术',
+    privacyCookiesBody:
+      '本站自身的唯一 Cookie 用于站长登录管理后台（仅访问 /admin/ 并登录后设置，普通访客不会获得）。与广告、同意管理相关的 Cookie 由第三方在启用广告的页面设置，并受你的同意选择控制。',
+    privacyChatTitle: '聊天助手',
+    privacyChatBody:
+      '当你主动向「技能库助手」提问时，对话内容会发送到本站服务器并转发给第三方 AI 服务以生成回答；为防止滥用，我们会按 IP 地址进行短时频率限制。对话内容不会存入数据库长期保存，仅用于即时生成回答与必要的运行排障日志。',
+    privacyAdsTitle: '广告与个性化（Ezoic）',
+    privacyAdsBody:
+      '本站通过 Ezoic 展示广告。Ezoic 可能使用 Cookie 与设备标识符提供个性化广告与测量服务。在欧盟/英国等需要同意的地区，个性化广告只会在你通过同意横幅（由 Ezoic 的同意管理平台提供）作出选择后展示；美国部分州的访客可通过横幅中的「Do Not Sell My Information」行使退出权。',
+    privacyEzoicPolicy: 'Ezoic 隐私政策',
+    privacyEzoicPartners: 'Ezoic 广告合作伙伴',
+    privacyThirdTitle: '第三方服务',
+    privacyThirdBody:
+      '本站依赖以下第三方运行：Cloudflare（站点托管与安全，所有请求经其网络处理，可能产生包含 IP 地址的标准访问日志）；Ezoic（广告与同意管理）；第三方 AI 服务商（生成聊天回答）；GitHub（代码仓库与 Issue 反馈；技能页的「讨论」区由 giscus.app 加载并与 GitHub Discussions 同步，适用 GitHub 的隐私政策）。',
+    privacyRetentionTitle: '数据保留',
+    privacyRetentionBody:
+      '聊天的频率计数按分钟自动过期，全站每日提问额度计数当日过期，站长登录会话 24 小时过期；除此之外，本站不为访客持久保存个人数据。服务器日志按托管平台的默认周期保留。',
+    privacyRightsTitle: '你的权利',
+    privacyRightsBody:
+      '你可以随时清除浏览器本地数据来删除本站存在你设备上的全部信息；欧盟/英国用户可通过同意横幅随时更改或撤回同意。如需查询、更正或删除与你相关的数据，或行使其他隐私权利，请通过 GitHub Issue 联系站长。',
+    privacyChangesTitle: '政策更新',
+    privacyChangesBody:
+      '本政策可能不时更新。如有重大变化，我们会在本页发布更新版本并修改「最后更新」日期，恕不另行逐一通知。',
+    privacyContactTitle: '联系我们',
+    privacyContactBody: '对本政策有任何疑问，或希望行使你的数据权利，欢迎在仓库提交 Issue。',
     navViewAllCategories: '全部分类',
     navViewAllTags: '全部标签',
     // 聊天窗
@@ -222,6 +256,39 @@ export const T = {
     contactGithubAction: '前往倉庫 →',
     contactCopyrightTitle: '版權與更正',
     contactCopyrightBody: '若發現內容侵犯了你的版權或資訊有誤，請透過倉庫 Issue 告知，我們會盡快處理。',
+    navPrivacy: '隱私政策',
+    privacyTitle: '隱私政策',
+    privacyDesc: '倉鼠AI技能庫隱私政策：我們如何處理本地儲存、聊天助手、廣告與第三方服務相關的資料。',
+    privacySub: '本頁說明你在使用本站時，哪些資料會被處理、如何被處理，以及你可以如何控制它們。',
+    privacyUpdatedLabel: '最後更新：',
+    privacyDataTitle: '瀏覽器本地儲存',
+    privacyDataBody:
+      '本站會在你的瀏覽器本地保存少量資料，用於記住你的偏好：主題模式（深色/淺色）、站點參數快取、以及技能頁上的讚與投票狀態。這些資料只存在你的裝置上、不會上傳伺服器；清除瀏覽器資料即可一併刪除。',
+    privacyCookiesTitle: 'Cookie 與類似技術',
+    privacyCookiesBody:
+      '本站自身唯一的 Cookie 用於站長登入管理後台（僅存取 /admin/ 並登入後設置，一般訪客不會取得）。與廣告、同意管理相關的 Cookie 由第三方在啟用廣告的頁面設置，並受你的同意選擇控制。',
+    privacyChatTitle: '聊天助手',
+    privacyChatBody:
+      '當你主動向「技能庫助手」提問時，對話內容會傳送到本站伺服器並轉發給第三方 AI 服務以產生回答；為防止濫用，我們會依 IP 位址進行短時頻率限制。對話內容不會存入資料庫長期保存，僅用於即時產生回答與必要的運行排障記錄。',
+    privacyAdsTitle: '廣告與個人化（Ezoic）',
+    privacyAdsBody:
+      '本站透過 Ezoic 展示廣告。Ezoic 可能使用 Cookie 與裝置識別碼提供個人化廣告與測量服務。在歐盟/英國等需要同意的地區，個人化廣告只會在你透過同意橫幅（由 Ezoic 的同意管理平台提供）作出選擇後展示；美國部分州的訪客可透過橫幅中的「Do Not Sell My Information」行使退出權。',
+    privacyEzoicPolicy: 'Ezoic 隱私政策',
+    privacyEzoicPartners: 'Ezoic 廣告合作夥伴',
+    privacyThirdTitle: '第三方服務',
+    privacyThirdBody:
+      '本站依賴以下第三方運行：Cloudflare（站點託管與安全，所有請求經其網路處理，可能產生包含 IP 位址的標準存取記錄）；Ezoic（廣告與同意管理）；第三方 AI 服務商（產生聊天回答）；GitHub（程式碼倉庫與 Issue 回饋；技能頁的「討論」區由 giscus.app 載入並與 GitHub Discussions 同步，適用 GitHub 的隱私政策）。',
+    privacyRetentionTitle: '資料保留',
+    privacyRetentionBody:
+      '聊天的頻率計數按分鐘自動過期，全站每日提問額度計數當日過期，站長登入工作階段 24 小時過期；除此之外，本站不為訪客持久保存個人資料。伺服器記錄按託管平台的預設週期保留。',
+    privacyRightsTitle: '你的權利',
+    privacyRightsBody:
+      '你可以隨時清除瀏覽器本地資料來刪除本站存在你裝置上的全部資訊；歐盟/英國使用者可透過同意橫幅隨時更改或撤回同意。如需查詢、更正或刪除與你相關的資料，或行使其他隱私權利，請透過 GitHub Issue 聯繫站長。',
+    privacyChangesTitle: '政策更新',
+    privacyChangesBody:
+      '本政策可能不時更新。如有重大變更，我們會在本頁發布更新版本並修改「最後更新」日期，恕不另行逐一通知。',
+    privacyContactTitle: '聯絡我們',
+    privacyContactBody: '對本政策有任何疑問，或希望行使你的資料權利，歡迎在倉庫提交 Issue。',
     navViewAllCategories: '全部分類',
     navViewAllTags: '全部標籤',
     // 聊天窗
@@ -371,6 +438,39 @@ export const T = {
     contactGithubAction: 'Open repository →',
     contactCopyrightTitle: 'Copyright & corrections',
     contactCopyrightBody: 'If you find content that infringes your copyright or contains mistakes, tell us via a repository issue and we will handle it promptly.',
+    navPrivacy: 'Privacy',
+    privacyTitle: 'Privacy Policy',
+    privacyDesc: 'Privacy policy for Hamster AI Skills: how we handle local storage, the chat assistant, ads, and third-party services.',
+    privacySub: 'This page explains what data is processed when you use this site, how it is processed, and how you can control it.',
+    privacyUpdatedLabel: 'Last updated:',
+    privacyDataTitle: 'Browser local storage',
+    privacyDataBody:
+      'The site stores a small amount of data in your browser to remember your preferences: theme mode (dark/light), a cached copy of site settings, and like/vote state on skill pages. This data stays on your device and is never uploaded; clearing your browser data removes it all.',
+    privacyCookiesTitle: 'Cookies and similar technologies',
+    privacyCookiesBody:
+      'The only cookie this site sets on its own is for the administrator login (set only after signing in at /admin/; regular visitors never receive it). Cookies related to advertising and consent management are set by third parties on ad-enabled pages and are governed by your consent choices.',
+    privacyChatTitle: 'Chat assistant',
+    privacyChatBody:
+      'When you ask the built-in assistant a question, the conversation is sent to our server and forwarded to a third-party AI service to generate a reply; we apply short-term, per-IP rate limits to prevent abuse. Chat content is not stored in a database — it is used only to generate the immediate answer and for essential operational logs.',
+    privacyAdsTitle: 'Advertising and personalization (Ezoic)',
+    privacyAdsBody:
+      'This site displays ads through Ezoic. Ezoic may use cookies and device identifiers to provide personalization and measurement services. In regions that require consent (e.g. the EU/UK), personalized ads are shown only after you make a choice via the consent banner provided by Ezoic’s consent management platform; visitors in certain US states can opt out via “Do Not Sell My Information” in that banner.',
+    privacyEzoicPolicy: 'Ezoic privacy policy',
+    privacyEzoicPartners: 'Ezoic advertising partners',
+    privacyThirdTitle: 'Third-party services',
+    privacyThirdBody:
+      'The site relies on these third parties: Cloudflare (hosting and security — all requests pass through its network and may produce standard access logs including IP addresses); Ezoic (ads and consent management); a third-party AI provider (generating chat replies); GitHub (the code repository and issue tracker; the “Discussion” section on skill pages is loaded from giscus.app and synced with GitHub Discussions, subject to GitHub’s privacy policy).',
+    privacyRetentionTitle: 'Data retention',
+    privacyRetentionBody:
+      'Chat rate counters expire within minutes, the site-wide daily question quota counter expires the same day, and administrator sessions expire after 24 hours; beyond that, the site keeps no persistent personal data about visitors. Server logs are retained for the hosting platform’s default period.',
+    privacyRightsTitle: 'Your rights',
+    privacyRightsBody:
+      'You can clear your browser’s local data at any time to remove everything this site stores on your device; EU/UK users can change or withdraw consent via the consent banner at any time. To access, correct, or delete data related to you, or to exercise other privacy rights, contact the maintainer via a GitHub issue.',
+    privacyChangesTitle: 'Changes to this policy',
+    privacyChangesBody:
+      'This policy may be updated from time to time. For material changes we will publish the new version on this page and update the “last updated” date rather than notifying individually.',
+    privacyContactTitle: 'Contact us',
+    privacyContactBody: 'For any questions about this policy, or to exercise your data rights, open an issue in the repository.',
     navViewAllCategories: 'All categories',
     // Chat widget
     chatOpen: 'Open assistant',
@@ -522,6 +622,39 @@ export const T = {
     contactGithubAction: '저장소 열기 →',
     contactCopyrightTitle: '저작권 및 정정',
     contactCopyrightBody: '저작권을 침해하는 내용이나 잘못된 정보를 발견하면 저장소 이슈로 알려 주세요. 신속히 처리하겠습니다.',
+    navPrivacy: '개인정보',
+    privacyTitle: '개인정보 처리방침',
+    privacyDesc: '햄스터 AI 스킬 라이브러리 개인정보 처리방침: 로컬 저장소, 챗 어시스턴트, 광고, 제3자 서비스 관련 데이터 처리 방법.',
+    privacySub: '이 페이지는 사이트 이용 시 어떤 데이터가 처리되고, 어떻게 처리되며, 어떻게 통제할 수 있는지 설명합니다.',
+    privacyUpdatedLabel: '최종 업데이트:',
+    privacyDataTitle: '브라우저 로컬 저장소',
+    privacyDataBody:
+      '사이트는 사용자 환경설정을 기억하기 위해 브라우저에 소량의 데이터를 저장합니다: 테마 모드(다크/라이트), 사이트 설정 캐시, 스킬 페이지의 좋아요/투표 상태. 이 데이터는 기기에만 남고 서버로 전송되지 않으며, 브라우저 데이터를 지우면 함께 삭제됩니다.',
+    privacyCookiesTitle: '쿠키 및 유사 기술',
+    privacyCookiesBody:
+      '이 사이트가 직접 설정하는 유일한 쿠키는 관리자 로그인용입니다(/admin/에서 로그인한 뒤에만 설정되며 일반 방문자에게는 발급되지 않습니다). 광고 및 동의 관리 관련 쿠키는 광고가 활성화된 페이지에서 제3자가 설정하며, 사용자의 동의 선택에 따라 제어됩니다.',
+    privacyChatTitle: '챗 어시스턴트',
+    privacyChatBody:
+      '내장 어시스턴트에 질문하면 대화 내용이 자체 서버를 거쳐 제3자 AI 서비스로 전달되어 답변이 생성됩니다. 남용 방지를 위해 IP별 단기 요청 제한이 적용됩니다. 대화 내용은 데이터베이스에 저장되지 않으며, 즉시 답변 생성과 필수 운영 로그 목적에만 사용됩니다.',
+    privacyAdsTitle: '광고 및 개인화 (Ezoic)',
+    privacyAdsBody:
+      '이 사이트는 Ezoic을 통해 광고를 게재합니다. Ezoic은 쿠키와 기기 식별자를 사용해 개인화 및 측정 서비스를 제공할 수 있습니다. 동의가 필요한 지역(EU/영국 등)에서는 Ezoic의 동의 관리 플랫폼이 제공하는 배너에서 선택한 뒤에만 개인화 광고가 표시되며, 미국 일부 주 방문자는 배너의 "Do Not Sell My Information"으로 거부할 수 있습니다.',
+    privacyEzoicPolicy: 'Ezoic 개인정보 처리방침',
+    privacyEzoicPartners: 'Ezoic 광고 파트너',
+    privacyThirdTitle: '제3자 서비스',
+    privacyThirdBody:
+      '이 사이트는 다음 제3자에 의존합니다: Cloudflare(호스팅 및 보안 — 모든 요청이 해당 네트워크를 통과하며 IP가 포함된 표준 액세스 로그가 생성될 수 있음); Ezoic(광고 및 동의 관리); 제3자 AI 제공자(채팅 답변 생성); GitHub(코드 저장소와 이슈 트래커; 스킬 페이지의 "토론" 영역은 giscus.app에서 로드되어 GitHub Discussions와 동기화되며 GitHub 개인정보 처리방침이 적용됩니다).',
+    privacyRetentionTitle: '데이터 보존',
+    privacyRetentionBody:
+      '채팅 요청 제한 카운터는 몇 분 내 만료되고, 전역 일일 질문 할당량 카운터는 당일 만료되며, 관리자 세션은 24시간 후 만료됩니다. 그 외에 사이트는 방문자에 대한 영구적인 개인 데이터를 보관하지 않습니다. 서버 로그는 호스팅 플랫폼의 기본 기간 동안 보존됩니다.',
+    privacyRightsTitle: '사용자의 권리',
+    privacyRightsBody:
+      '언제든지 브라우저 로컬 데이터를 지워 이 사이트가 기기에 저장한 모든 정보를 삭제할 수 있습니다. EU/영국 사용자는 동의 배너를 통해 언제든지 동의를 변경하거나 철회할 수 있습니다. 관련 데이터의 열람·정정·삭제 또는 기타 권리 행사를 원하시면 GitHub 이슈로 연락해 주세요.',
+    privacyChangesTitle: '정책 변경',
+    privacyChangesBody:
+      '이 정책은 수시로 업데이트될 수 있습니다. 중요한 변경이 있으면 이 페이지에 새 버전을 게시하고 "최종 업데이트" 날짜를 갱신합니다.',
+    privacyContactTitle: '문의하기',
+    privacyContactBody: '이 정책에 대한 질문이나 데이터 권리 행사는 저장소에 이슈를 열어주세요.',
     navViewAllCategories: '모든 카테고리',
     navViewAllTags: '모든 태그',
     // 채팅 위젯
@@ -671,6 +804,39 @@ export const T = {
     contactGithubAction: 'Buka repositori →',
     contactCopyrightTitle: 'Hak cipta & pembetulan',
     contactCopyrightBody: 'Jika anda menemui kandungan yang melanggar hak cipta anda atau maklumat yang salah, beritahu kami melalui isu repositori dan kami akan uruskan segera.',
+    navPrivacy: 'Privasi',
+    privacyTitle: 'Dasar Privasi',
+    privacyDesc: 'Dasar privasi Pustaka Kemahiran AI Hamster: cara kami mengendalikan storan setempat, pembantu sembang, iklan dan perkhidmatan pihak ketiga.',
+    privacySub: 'Halaman ini menerangkan data apa yang diproses apabila anda menggunakan laman ini, bagaimana ia diproses, dan cara anda boleh mengawalnya.',
+    privacyUpdatedLabel: 'Dikemas kini:',
+    privacyDataTitle: 'Storan setempat pelayar',
+    privacyDataBody:
+      'Laman ini menyimpan sedikit data dalam pelayar anda untuk mengingati pilihan anda: mod tema (gelap/cerah), cache tetapan laman, dan status suka/undi pada halaman kemahiran. Data ini kekal pada peranti anda dan tidak dimuat naik; kosongkan data pelayar untuk memadamkannya.',
+    privacyCookiesTitle: 'Kuki dan teknologi serupa',
+    privacyCookiesBody:
+      'Satu-satunya kuki yang laman ini set sendiri ialah untuk log masuk pentadbir (hanya selepas daftar masuk di /admin/; pelawat biasa tidak menerimanya). Kuki berkaitan iklan dan pengurusan persetujuan ditetapkan oleh pihak ketiga pada halaman yang mengaktifkan iklan, dan dikawal oleh pilihan persetujuan anda.',
+    privacyChatTitle: 'Pembantu sembang',
+    privacyChatBody:
+      'Apabila anda bertanya kepada pembantu terbina dalam, perbualan dihantar ke pelayan kami dan diteruskan ke perkhidmatan AI pihak ketiga untuk menjana jawapan; had kadar jangka pendek mengikut IP dikenakan untuk mencegah penyalahgunaan. Kandungan perbualan tidak disimpan dalam pangkalan data — ia hanya digunakan untuk menjana jawapan serta log operasi yang perlu.',
+    privacyAdsTitle: 'Pengiklanan dan pemperibadian (Ezoic)',
+    privacyAdsBody:
+      'Laman ini memaparkan iklan melalui Ezoic. Ezoic mungkin menggunakan kuki dan pengecam peranti untuk menyediakan perkhidmatan pemperibadian dan pengukuran. Di wilayah yang memerlukan persetujuan (EU/UK), iklan diperibadikan hanya dipaparkan selepas anda membuat pilihan melalui sepanduk persetujuan yang disediakan oleh platform pengurusan persetujuan Ezoic; pelawat di sesetengah negeri AS boleh menarik diri melalui "Do Not Sell My Information" dalam sepanduk itu.',
+    privacyEzoicPolicy: 'Dasar privasi Ezoic',
+    privacyEzoicPartners: 'Rakan iklan Ezoic',
+    privacyThirdTitle: 'Perkhidmatan pihak ketiga',
+    privacyThirdBody:
+      'Laman ini bergantung pada pihak ketiga berikut: Cloudflare (penghosan dan keselamatan — semua permintaan melalui rangkaiannya dan mungkin menghasilkan log akses standard termasuk alamat IP); Ezoic (iklan dan pengurusan persetujuan); penyedia AI pihak ketiga (menjana jawapan sembang); GitHub (repositori kod dan isu; bahagian "Perbincangan" pada halaman kemahiran dimuatkan dari giscus.app dan disegerakkan dengan GitHub Discussions, tertakluk pada dasar privasi GitHub).',
+    privacyRetentionTitle: 'Pengekalan data',
+    privacyRetentionBody:
+      'Kaunter kadar sembang tamat dalam beberapa minit, kaunter kuota soalan harian laman tamat pada hari yang sama, dan sesi pentadbir tamat selepas 24 jam; selain itu, laman tidak menyimpan data peribadi berterusan tentang pelawat. Log pelayan disimpan mengikut tempoh lalai platform penghosan.',
+    privacyRightsTitle: 'Hak anda',
+    privacyRightsBody:
+      'Anda boleh mengosongkan data setempat pelayar pada bila-bila masa untuk memadam semua yang laman ini simpan pada peranti anda; pengguna EU/UK boleh menukar atau menarik balik persetujuan melalui sepanduk persetujuan pada bila-bila masa. Untuk mengakses, membetulkan atau memadam data berkaitan anda, atau melaksanakan hak privasi lain, hubungi penyelia melalui isu GitHub.',
+    privacyChangesTitle: 'Perubahan dasar',
+    privacyChangesBody:
+      'Dasar ini mungkin dikemas kini dari semasa ke semasa. Untuk perubahan penting, kami akan menerbitkan versi baharu di halaman ini dan mengemas kini tarikh "Dikemas kini".',
+    privacyContactTitle: 'Hubungi Kami',
+    privacyContactBody: 'Untuk sebarang pertanyaan tentang dasar ini, atau untuk melaksanakan hak data anda, buka isu di repositori.',
     navViewAllCategories: 'Semua kategori',
     navViewAllTags: 'Semua tag',
     // Widget sembang

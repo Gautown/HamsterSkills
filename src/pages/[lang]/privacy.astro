@@ -1,0 +1,10 @@
+---
+import PrivacyPage from '../../components/PrivacyPage.astro'
+import { NON_DEFAULT_LOCALES, localeFromParams } from '../../lib/languages'
+
+export function getStaticPaths() {
+  return NON_DEFAULT_LOCALES.map((lang) => ({ params: { lang } }))
+}
+---
+
+<PrivacyPage lang={localeFromParams(Astro.params.lang)} />
