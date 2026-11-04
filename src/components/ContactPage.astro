@@ -1,0 +1,90 @@
+---
+/**
+ * 联系页（五语言共用）。
+ *
+ * 对外渠道只有 GitHub 仓库（公开仓库，Issues 对访客可用）——
+ * 不臆造邮箱/IM 等未确认的联系方式；以后要加渠道在这里补卡片即可。
+ */
+import Layout from '../layouts/Layout.astro'
+import { T, type Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
+
+interface Props {
+  lang: Locale
+}
+
+const { lang } = Astro.props
+const t = T[lang]
+const base = baseOf(lang)
+
+const REPO_ISSUES = 'https://github.com/Gautown/HamsterSkills/issues'
+---
+
+<Layout lang={lang} title={t.contactTitle} description={t.contactDesc} path={`${base}/contact/`}>
+  <div class="container contact-wrap">
+    <header class="contact-head">
+      <h1>{t.contactTitle}</h1>
+      <p class="contact-sub">{t.contactSub}</p>
+    </header>
+
+    <section class="contact-card">
+      <h2>{t.contactGithubTitle}</h2>
+      <p>{t.contactGithubBody}</p>
+      <a class="btn btn-filled" href={REPO_ISSUES} target="_blank" rel="noopener">{t.contactGithubAction}</a>
+    </section>
+
+    <section class="contact-card">
+      <h2>{t.contactCopyrightTitle}</h2>
+      <p>{t.contactCopyrightBody}</p>
+    </section>
+
+    <div class="contact-cta">
+      <a class="btn btn-outline" href={`${base}/about/`}>{t.navAbout} →</a>
+      <a class="btn btn-outline" href={`${base}/`}>{t.navSkills}</a>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .contact-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 20px 96px;
+  }
+  .contact-head h1 {
+    font-size: 32px;
+    font-weight: 300;
+    letter-spacing: -0.64px;
+    margin: 0 0 12px;
+  }
+  .contact-sub {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.75;
+    margin: 0 0 28px;
+  }
+  .contact-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .contact-card h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 10px;
+  }
+  .contact-card p {
+    font-size: 14px;
+    line-height: 1.85;
+    color: var(--muted);
+    margin: 0 0 16px;
+  }
+  .contact-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 28px;
+  }
+</style>

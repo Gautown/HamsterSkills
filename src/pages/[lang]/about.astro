@@ -1,0 +1,10 @@
+---
+import AboutPage from '../../components/AboutPage.astro'
+import { NON_DEFAULT_LOCALES, localeFromParams } from '../../lib/languages'
+
+export function getStaticPaths() {
+  return NON_DEFAULT_LOCALES.map((lang) => ({ params: { lang } }))
+}
+---
+
+<AboutPage lang={localeFromParams(Astro.params.lang)} />

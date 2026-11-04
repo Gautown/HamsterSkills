@@ -1,0 +1,153 @@
+---
+/**
+ * 关于页（五语言共用）。
+ *
+ * 内容 = 语言包静态文案 + 实时统计（技能/分类/标签/语言数）。
+ * 版权声明一节复用语言包里此前从未被任何页面使用的
+ * copyrightTitle / copyrightBody / copyrightLaw 三个词条。
+ *
+ * 页面文件是薄壳：/about.astro 传 zh，/[lang]/about.astro 传对应语言。
+ */
+import { getCollection } from 'astro:content'
+import Layout from '../layouts/Layout.astro'
+import { T, type Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
+import { CATEGORY_KEYS } from '../lib/categories'
+import { LOCALES } from '../lib/languages'
+
+interface Props {
+  lang: Locale
+}
+
+const { lang } = Astro.props
+const t = T[lang]
+const base = baseOf(lang)
+
+const skills = await getCollection('skills')
+const tagCount = new Set(skills.flatMap(s => s.data.tags)).size
+const stats = [
+  { value: skills.length, label: t.statSkills },
+  { value: CATEGORY_KEYS.length, label: t.statCategories },
+  { value: tagCount, label: t.statTags },
+  { value: LOCALES.length, label: t.statLanguages },
+]
+---
+
+<Layout lang={lang} title={t.aboutTitle} description={t.aboutDesc} path={`${base}/about/`}>
+  <div class="container about-wrap">
+    <header class="about-head">
+      <h1>{t.aboutTitle}</h1>
+      <p class="about-sub">{t.aboutSub}</p>
+    </header>
+
+    <div class="about-stats">
+      {stats.map(s => (
+        <div class="about-stat">
+          <b>{s.value.toLocaleString()}</b>
+          <span>{s.label}</span>
+        </div>
+      ))}
+    </div>
+
+    <section class="about-card">
+      <h2>{t.aboutWhatTitle}</h2>
+      <p>{t.aboutWhatBody}</p>
+    </section>
+
+    <section class="about-card">
+      <h2>{t.aboutHowTitle}</h2>
+      <p>{t.aboutHowCopy}</p>
+      <p>{t.aboutHowInstall}</p>
+    </section>
+
+    <section class="about-card">
+      <h2>{t.aboutSourceTitle}</h2>
+      <p>{t.aboutSourceBody}</p>
+    </section>
+
+    <section class="about-card about-legal">
+      <h2>{t.copyrightTitle}</h2>
+      <p>{t.copyrightBody}</p>
+      <p class="about-law">{t.copyrightLaw}</p>
+    </section>
+
+    <div class="about-cta">
+      <a class="btn btn-filled" href={`${base}/`}>{t.navSkills} →</a>
+      <a class="btn btn-outline" href={`${base}/contact/`}>{t.navContact}</a>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .about-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 20px 96px;
+  }
+  .about-head h1 {
+    font-size: 32px;
+    font-weight: 300;
+    letter-spacing: -0.64px;
+    margin: 0 0 12px;
+  }
+  .about-sub {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.75;
+    margin: 0 0 28px;
+  }
+  .about-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .about-stat {
+    flex: 1 1 130px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .about-stat b {
+    display: block;
+    font-size: 24px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .about-stat span {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .about-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .about-card h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 10px;
+  }
+  .about-card p {
+    font-size: 14px;
+    line-height: 1.85;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  .about-card p:last-child {
+    margin-bottom: 0;
+  }
+  .about-legal .about-law {
+    font-size: 12px;
+    line-height: 1.8;
+  }
+  .about-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 28px;
+  }
+</style>

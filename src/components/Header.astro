@@ -2,12 +2,12 @@
 /**
  * 站点导航。
  *
- * 桌面端：全部技能 / 分类 / 标签 三个入口固定显示，后两者各带下拉
+ * 桌面端：全部技能 / 分类 / 标签 / 关于 / 联系 五个入口固定显示，中间两者各带下拉
  *   - 分类下拉：10 个固定分类，带技能数
  *   - 标签下拉：热门标签（技能数 ≥ HOT_TAG_MIN），带技能数
  *     实测 1217 个标签里有 864 个只出现 1 次，全部塞进菜单会不可用，
  *     因此只放热门项并提供「查看全部」入口。
- * 窄屏（≤900px）：三个入口 + 主题 + 语言收进汉堡面板
+ * 窄屏（≤900px）：五个入口 + 主题 + 语言收进汉堡面板
  */
 import { getCollection } from 'astro:content'
 import { CATEGORY_KEYS, CATEGORY_NAMES } from '../lib/categories'
@@ -167,6 +167,13 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
         </div>
       </details>
 
+      <a class="nav-link" href={`${base}/about`} aria-current={isActive(`${base}/about`) ? 'page' : undefined}>
+        {t.navAbout}
+      </a>
+      <a class="nav-link" href={`${base}/contact`} aria-current={isActive(`${base}/contact`) ? 'page' : undefined}>
+        {t.navContact}
+      </a>
+
       {/*
         主题按钮：文字换成图标。
         两个图标都渲染在 DOM 里，由 CSS 按当前主题显示其一——
@@ -256,6 +263,8 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
         {t.navCategories}
       </a>
       <a href={`${base}/tags`} class:list={{ active: pathname.startsWith(`${base}/tags`) }}>{t.navTags}</a>
+      <a href={`${base}/about`} class:list={{ active: isActive(`${base}/about`) }}>{t.navAbout}</a>
+      <a href={`${base}/contact`} class:list={{ active: isActive(`${base}/contact`) }}>{t.navContact}</a>
       <div class="nav-mobile-foot">
         {/*
           窄屏面板里的副本，与桌面版结构相同。

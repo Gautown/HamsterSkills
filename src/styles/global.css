@@ -2619,6 +2619,22 @@ h2 {
   margin: 0 8px;
 }
 
+/* 页脚中部的关于/联系入口 */
+.site-footer .footer-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.site-footer .footer-links a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.site-footer .footer-links a:hover {
+  color: var(--accent-text);
+}
+
 @media (min-width: 960px) {
   .detail-grid {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);

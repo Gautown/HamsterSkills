@@ -8,6 +8,7 @@
  */
 import { T } from '../i18n/translations'
 import type { Locale } from '../i18n/translations'
+import { baseOf } from '../lib/site-paths'
 
 interface Props {
   lang: Locale
@@ -15,11 +16,16 @@ interface Props {
 
 const { lang } = Astro.props
 const t = T[lang]
+const base = baseOf(lang)
 ---
 
 <footer class="site-footer">
   <div class="container">
     <span><span data-site-name>{t.siteName}</span> · <span data-site-desc>{t.siteDesc}</span></span>
+    <span class="footer-links">
+      <a href={`${base}/about`}>{t.navAbout}</a>
+      <a href={`${base}/contact`}>{t.navContact}</a>
+    </span>
     <span class="footer-note-line">
       {/* 版权行：默认留空，加载器按后台配置填充；未配置时整段（含分隔点）不显示 */}
       <span data-copyright></span>
