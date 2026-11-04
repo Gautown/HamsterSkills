@@ -112,8 +112,42 @@ export interface AdsConfig {
   vignette: boolean
 }
 
+/** 关于页可覆盖的正文（留空沿用各语言默认词条） */
+export interface AboutContent {
+  sub?: string
+  whatBody?: string
+  howCopy?: string
+  howInstall?: string
+  sourceBody?: string
+}
+
+/** 联系页可覆盖的正文；email 为可选联系邮箱（设置后页面显示邮箱卡片） */
+export interface ContactContent {
+  sub?: string
+  githubBody?: string
+  copyrightBody?: string
+  email?: string
+}
+
+/** 隐私政策页可覆盖的正文（标题与章节结构保持代码固定） */
+export interface PrivacyContent {
+  sub?: string
+  dataBody?: string
+  cookiesBody?: string
+  chatBody?: string
+  adsBody?: string
+  thirdBody?: string
+  retentionBody?: string
+  rightsBody?: string
+  changesBody?: string
+  contactBody?: string
+}
+
 export interface SiteConfig {
   site: SiteText
+  about: AboutContent
+  contact: ContactContent
+  privacy: PrivacyContent
   ads: AdsConfig
 }
 
@@ -124,6 +158,9 @@ export interface SiteConfig {
  */
 export const DEFAULT_SITE_CONFIG: SiteConfig = {
   site: {},
+  about: {},
+  contact: {},
+  privacy: {},
   ads: { enabled: true, sideRails: 'left', anchor: false, vignette: false },
 }
 
@@ -138,6 +175,27 @@ const TEXT_LIMITS = {
   heroCta1: 20,
   heroCta2: 20,
 } as const
+
+/** 关于/联系/隐私页正文的长度上限（分组键与配置结构一致） */
+const PAGE_LIMITS = {
+  about: { sub: 160, whatBody: 600, howCopy: 300, howInstall: 300, sourceBody: 400 },
+  contact: { sub: 300, githubBody: 400, copyrightBody: 400, email: 120 },
+  privacy: {
+    sub: 300,
+    dataBody: 800,
+    cookiesBody: 800,
+    chatBody: 800,
+    adsBody: 1200,
+    thirdBody: 800,
+    retentionBody: 800,
+    rightsBody: 800,
+    changesBody: 800,
+    contactBody: 800,
+  },
+} as const
+
+/** 邮箱形状校验：不合法直接丢弃——宁缺毋滥，避免页面渲染出坏掉的 mailto 链接 */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function cleanText(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return undefined
@@ -168,8 +226,27 @@ export function normalizeSiteConfig(raw: unknown): SiteConfig {
     if (value !== undefined) site[key] = value
   }
 
+  /** 把任意输入按 limits 表归一化为一个分组（截断、去空白、空值省略键） */
+  function buildGroup<K extends string>(input: unknown, limits: Record<K, number>): Partial<Record<K, string>> {
+    const src = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+    const out: Partial<Record<K, string>> = {}
+    for (const key of Object.keys(limits) as K[]) {
+      const value = cleanText(src[key], limits[key])
+      if (value !== undefined) out[key] = value
+    }
+    return out
+  }
+
+  const about = buildGroup(root.about, PAGE_LIMITS.about)
+  const contact = buildGroup(root.contact, PAGE_LIMITS.contact)
+  if (contact.email !== undefined && !EMAIL_RE.test(contact.email)) delete contact.email
+  const privacy = buildGroup(root.privacy, PAGE_LIMITS.privacy)
+
   return {
     site,
+    about,
+    contact,
+    privacy,
     ads: {
       enabled: cleanBool(ads.enabled, true),
       sideRails: side === 'off' || side === 'left' || side === 'both' ? side : DEFAULT_SITE_CONFIG.ads.sideRails,

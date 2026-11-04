@@ -37,28 +37,28 @@ const EZOIC_PARTNERS = 'https://www.ezoic.com/ad-partners'
   <div class="container privacy-wrap">
     <header class="privacy-head">
       <h1>{t.privacyTitle}</h1>
-      <p class="privacy-sub">{t.privacySub}</p>
+      <p class="privacy-sub" data-privacy-sub>{t.privacySub}</p>
       <p class="privacy-updated">{t.privacyUpdatedLabel} <time datetime={UPDATED}>{UPDATED}</time></p>
     </header>
 
     <section class="privacy-card">
       <h2>{t.privacyDataTitle}</h2>
-      <p>{t.privacyDataBody}</p>
+      <p data-privacy-data>{t.privacyDataBody}</p>
     </section>
 
     <section class="privacy-card">
       <h2>{t.privacyCookiesTitle}</h2>
-      <p>{t.privacyCookiesBody}</p>
+      <p data-privacy-cookies>{t.privacyCookiesBody}</p>
     </section>
 
     <section class="privacy-card">
       <h2>{t.privacyChatTitle}</h2>
-      <p>{t.privacyChatBody}</p>
+      <p data-privacy-chat>{t.privacyChatBody}</p>
     </section>
 
     <section class="privacy-card">
       <h2>{t.privacyAdsTitle}</h2>
-      <p>{t.privacyAdsBody}</p>
+      <p data-privacy-ads>{t.privacyAdsBody}</p>
       <p class="privacy-links">
         <a href={EZOIC_POLICY} target="_blank" rel="noopener">{t.privacyEzoicPolicy} ↗</a>
         <a href={EZOIC_PARTNERS} target="_blank" rel="noopener">{t.privacyEzoicPartners} ↗</a>
@@ -67,27 +67,27 @@ const EZOIC_PARTNERS = 'https://www.ezoic.com/ad-partners'
 
     <section class="privacy-card">
       <h2>{t.privacyThirdTitle}</h2>
-      <p>{t.privacyThirdBody}</p>
+      <p data-privacy-third>{t.privacyThirdBody}</p>
     </section>
 
     <section class="privacy-card">
       <h2>{t.privacyRetentionTitle}</h2>
-      <p>{t.privacyRetentionBody}</p>
+      <p data-privacy-retention>{t.privacyRetentionBody}</p>
     </section>
 
     <section class="privacy-card">
       <h2>{t.privacyRightsTitle}</h2>
-      <p>{t.privacyRightsBody}</p>
+      <p data-privacy-rights>{t.privacyRightsBody}</p>
     </section>
 
     <section class="privacy-card">
       <h2>{t.privacyChangesTitle}</h2>
-      <p>{t.privacyChangesBody}</p>
+      <p data-privacy-changes>{t.privacyChangesBody}</p>
     </section>
 
     <section class="privacy-card">
       <h2>{t.privacyContactTitle}</h2>
-      <p>{t.privacyContactBody}</p>
+      <p data-privacy-contact>{t.privacyContactBody}</p>
       <a class="btn btn-filled" href={REPO_ISSUES} target="_blank" rel="noopener">{t.contactGithubAction}</a>
     </section>
 

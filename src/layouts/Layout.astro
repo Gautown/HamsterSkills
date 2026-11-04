@@ -96,8 +96,9 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     {/*
       站点配置运行时加载器（全站页面，管理后台 /admin/ 写 KV、本脚本读 API）：
-      - 站点参数（名称/描述/页脚备注/版权行/首页 Hero 文案）与自定义 logo
-        由它拉取 /api/site-config 覆盖 [data-site-name] 等锚点；
+      - 站点参数（名称/描述/页脚备注/版权行/首页 Hero 文案）、自定义 logo，
+        以及关于/联系/隐私页的正文覆盖——由它拉取 /api/site-config
+        覆盖 [data-site-name]、[data-about-*] 等锚点；
         localStorage 镜像 5 分钟，多数页面零网络请求。
       - Ezoic 广告（ezAds 页面）也由配置驱动：总开关/Side Rails 方向/
         anchor/插屏决定是否注入官方脚本与 config 标志。
@@ -118,8 +119,8 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
             if (c && typeof c._t === 'number' && Date.now() - c._t < TTL_MS) cached = c
           }
         } catch (e) {}
-        // 缓存命中先应用文本/logo（比等网络快）；广告注入保持同步判断
-        if (cached) whenReady(function () { applyText(cached.site); applyLogo(cached.logo) })
+        // 缓存命中先应用文本/logo/页面覆盖（比等网络快）；广告注入保持同步判断
+        if (cached) whenReady(function () { applyText(cached.site); applyLogo(cached.logo); applyPages(cached) })
         if (adsWanted) injectAds(cached && cached.ads)
         fetch('/api/site-config').then(function (r) {
           return r.ok ? r.json() : null
@@ -127,7 +128,7 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
           if (!fresh || fresh.error) return
           fresh._t = Date.now()
           try { localStorage.setItem(KEY, JSON.stringify(fresh)) } catch (e) {}
-          whenReady(function () { applyText(fresh.site); applyLogo(fresh.logo) })
+          whenReady(function () { applyText(fresh.site); applyLogo(fresh.logo); applyPages(fresh) })
         }).catch(function () {})
 
         function injectAds(ads) {
@@ -190,6 +191,64 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
           var src = '/api/site-logo?v=' + logo.v
           var imgs = document.querySelectorAll('[data-site-logo]')
           for (var i = 0; i < imgs.length; i++) imgs[i].src = src
+        }
+
+        /**
+         * 关于/联系/隐私页的正文覆盖（分组 → 字段 → 锚点）。
+         * 覆盖值在后台是单一文本（与站点名称/Hero 同一约定），
+         * 因此会作用到全部语言版本；留空的字段保持各语言默认词条。
+         */
+        var PAGE_SLOTS = [
+          ['about', {
+            sub: '[data-about-sub]',
+            whatBody: '[data-about-what]',
+            howCopy: '[data-about-howcopy]',
+            howInstall: '[data-about-howinstall]',
+            sourceBody: '[data-about-source]',
+          }],
+          ['contact', {
+            sub: '[data-contact-sub]',
+            githubBody: '[data-contact-github]',
+            copyrightBody: '[data-contact-copyright]',
+          }],
+          ['privacy', {
+            sub: '[data-privacy-sub]',
+            dataBody: '[data-privacy-data]',
+            cookiesBody: '[data-privacy-cookies]',
+            chatBody: '[data-privacy-chat]',
+            adsBody: '[data-privacy-ads]',
+            thirdBody: '[data-privacy-third]',
+            retentionBody: '[data-privacy-retention]',
+            rightsBody: '[data-privacy-rights]',
+            changesBody: '[data-privacy-changes]',
+            contactBody: '[data-privacy-contact]',
+          }],
+        ]
+
+        function applyPages(cfg) {
+          if (!cfg) return
+          for (var p = 0; p < PAGE_SLOTS.length; p++) {
+            var group = cfg[PAGE_SLOTS[p][0]]
+            if (!group || typeof group !== 'object') continue
+            var map = PAGE_SLOTS[p][1]
+            for (var key in map) {
+              var value = group[key]
+              if (typeof value !== 'string' || !value) continue
+              var els = document.querySelectorAll(map[key])
+              for (var i = 0; i < els.length; i++) els[i].textContent = value
+            }
+          }
+          /* 联系邮箱：设置后填充地址并解除邮箱卡片隐藏 */
+          var contact = cfg.contact
+          if (contact && typeof contact.email === 'string' && contact.email) {
+            var link = document.querySelector('[data-contact-email-link]')
+            var card = document.querySelector('[data-contact-email-card]')
+            if (link) {
+              link.textContent = contact.email
+              link.setAttribute('href', 'mailto:' + contact.email)
+            }
+            if (card) card.hidden = false
+          }
         }
       })()
     </script>

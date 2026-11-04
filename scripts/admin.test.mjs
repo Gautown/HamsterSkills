@@ -257,6 +257,43 @@ test('未知接口 404；SITE_KV 缺失时管理端点 503', async () => {
   assert.equal(noKv.status, 503)
 })
 
+test('页面内容分组：归一化、长度上限、非法邮箱丢弃', () => {
+  const cfg = normalizeSiteConfig({
+    about: { sub: '  新副标题 ', whatBody: 'x'.repeat(700), evil: '应被丢弃' },
+    contact: { email: '  bad email  ', githubBody: 'g' },
+    privacy: { adsBody: 'Ezoic wording' },
+  })
+  assert.equal(cfg.about.sub, '新副标题')
+  assert.equal(cfg.about.whatBody.length, 600)
+  assert.equal(cfg.about.evil, undefined)
+  assert.equal(cfg.contact.email, undefined)
+  assert.equal(cfg.contact.githubBody, 'g')
+  assert.equal(cfg.privacy.adsBody, 'Ezoic wording')
+
+  const valid = normalizeSiteConfig({ contact: { email: 'hi@example.com' } })
+  assert.equal(valid.contact.email, 'hi@example.com')
+})
+
+test('页面内容随配置保存并被公开端点带回', async () => {
+  const kv = new FakeKV()
+  await kv.map.set('adm:cred', JSON.stringify({ u: 'boss', ...(await hashPassword('password9', 512)) }))
+  const login = await handleAdminApi(jsonReq('POST', '/api/admin/login', { username: 'boss', password: 'password9' }), env(kv, 'x'))
+  const token = tokenOf(login)
+  const put = await handleAdminApi(
+    new Request(base + '/api/admin/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: `hamster_admin=${token}`, Origin: base },
+      body: JSON.stringify({ about: { sub: '改过的副标题' }, contact: { email: 'hi@example.com' }, ads: {} }),
+    }),
+    env(kv, 'x'),
+  )
+  assert.equal(put.status, 200)
+  const pub = await (await handleAdminApi(new Request(base + '/api/site-config'), env(kv, 'x'))).json()
+  assert.equal(pub.about.sub, '改过的副标题')
+  assert.equal(pub.contact.email, 'hi@example.com')
+  assert.equal(pub.privacy.sub, undefined)
+})
+
 test('新增站点字段：Hero 文案 / 版权行 归一化（截断、去空白、空值省略）', () => {
   const cfg = normalizeSiteConfig({
     site: {

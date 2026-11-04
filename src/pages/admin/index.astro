@@ -112,6 +112,96 @@ import Layout from '../../layouts/Layout.astro'
           <input name="copyright" maxlength="120" placeholder="如：© 2026 仓鼠AI技能库（留空则不显示）" />
         </label>
 
+        <h3 class="admin-h3">页面内容</h3>
+        <p class="admin-hint">
+          覆盖「关于 / 联系 / 隐私政策」页的正文；留空沿用默认文案。覆盖值为单一文本，对全部语言版本生效。
+        </p>
+        <details class="admin-pages">
+          <summary>关于页</summary>
+          <label class="admin-label">
+            <span>副标题</span>
+            <input name="aboutSub" maxlength="160" />
+          </label>
+          <label class="admin-label">
+            <span>「这是什么」正文</span>
+            <textarea name="aboutWhatBody" maxlength="600" rows="3"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>「怎么使用」复制提示词段</span>
+            <textarea name="aboutHowCopy" maxlength="300" rows="2"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>「怎么使用」一键安装段</span>
+            <textarea name="aboutHowInstall" maxlength="300" rows="2"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>「内容来源」正文</span>
+            <textarea name="aboutSourceBody" maxlength="400" rows="2"></textarea>
+          </label>
+        </details>
+        <details class="admin-pages">
+          <summary>联系页</summary>
+          <label class="admin-label">
+            <span>副标题</span>
+            <input name="contactSub" maxlength="300" />
+          </label>
+          <label class="admin-label">
+            <span>联系邮箱（设置后联系页显示邮箱卡片）</span>
+            <input name="contactEmail" type="email" maxlength="120" placeholder="如 contact@example.com" />
+          </label>
+          <label class="admin-label">
+            <span>GitHub 渠道说明</span>
+            <textarea name="contactGithubBody" maxlength="400" rows="2"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>版权与更正正文</span>
+            <textarea name="contactCopyrightBody" maxlength="400" rows="2"></textarea>
+          </label>
+        </details>
+        <details class="admin-pages">
+          <summary>隐私政策页</summary>
+          <label class="admin-label">
+            <span>副标题</span>
+            <input name="privacySub" maxlength="300" />
+          </label>
+          <label class="admin-label">
+            <span>广告与个性化（Ezoic 披露段——与平台指定措辞对齐处）</span>
+            <textarea name="privacyAdsBody" maxlength="1200" rows="4"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>浏览器本地存储</span>
+            <textarea name="privacyDataBody" maxlength="800" rows="3"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>Cookie 与类似技术</span>
+            <textarea name="privacyCookiesBody" maxlength="800" rows="3"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>聊天助手</span>
+            <textarea name="privacyChatBody" maxlength="800" rows="3"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>第三方服务</span>
+            <textarea name="privacyThirdBody" maxlength="800" rows="3"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>数据保留</span>
+            <textarea name="privacyRetentionBody" maxlength="800" rows="3"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>你的权利</span>
+            <textarea name="privacyRightsBody" maxlength="800" rows="3"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>政策更新</span>
+            <textarea name="privacyChangesBody" maxlength="800" rows="2"></textarea>
+          </label>
+          <label class="admin-label">
+            <span>联系我们</span>
+            <textarea name="privacyContactBody" maxlength="800" rows="2"></textarea>
+          </label>
+        </details>
+
         <h3 class="admin-h3">广告模块（Ezoic）</h3>
         <p class="admin-hint">Side Rails 为宽屏两侧闲置边栏竖幅，仅首页与技能详情页候选。</p>
         <label class="admin-check">
@@ -221,7 +311,8 @@ import Layout from '../../layouts/Layout.astro'
     font-weight: 500;
   }
   .admin-form input,
-  .admin-form select {
+  .admin-form select,
+  .admin-form textarea {
     font: inherit;
     font-size: 14px;
     padding: 9px 12px;
@@ -232,9 +323,31 @@ import Layout from '../../layouts/Layout.astro'
     outline: none;
   }
   .admin-form input:focus-visible,
-  .admin-form select:focus-visible {
+  .admin-form select:focus-visible,
+  .admin-form textarea:focus-visible {
     border-color: var(--brand, #533afd);
     box-shadow: 0 0 0 3px rgba(83, 58, 253, 0.15);
+  }
+  .admin-form textarea {
+    resize: vertical;
+    min-height: 64px;
+    line-height: 1.7;
+  }
+  /* 页面内容分组（可折叠的 details，避免管理页被长表单淹没） */
+  .admin-pages {
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+  }
+  .admin-pages summary {
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .admin-pages[open] {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 6px;
   }
   .admin-check {
     display: flex;
@@ -346,6 +459,35 @@ import Layout from '../../layouts/Layout.astro'
   const $ = <T extends HTMLElement>(sel: string): T => document.querySelector(sel) as T
   const field = (form: HTMLFormElement, name: string): HTMLInputElement =>
     form.elements.namedItem(name) as HTMLInputElement
+  /** 文本/多行字段取用（textarea 与 input 都有 value；checkbox 走 field().checked） */
+  const fieldText = (form: HTMLFormElement, name: string): HTMLInputElement | HTMLTextAreaElement =>
+    form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement
+
+  /**
+   * 页面内容表单字段 → [配置分组, 组内键名]。
+   * 填充与提交共用同一张表，防止两侧漂移（新增字段只改这一处）。
+   */
+  const PAGE_FIELDS: Array<[string, 'about' | 'contact' | 'privacy', string]> = [
+    ['aboutSub', 'about', 'sub'],
+    ['aboutWhatBody', 'about', 'whatBody'],
+    ['aboutHowCopy', 'about', 'howCopy'],
+    ['aboutHowInstall', 'about', 'howInstall'],
+    ['aboutSourceBody', 'about', 'sourceBody'],
+    ['contactSub', 'contact', 'sub'],
+    ['contactEmail', 'contact', 'email'],
+    ['contactGithubBody', 'contact', 'githubBody'],
+    ['contactCopyrightBody', 'contact', 'copyrightBody'],
+    ['privacySub', 'privacy', 'sub'],
+    ['privacyAdsBody', 'privacy', 'adsBody'],
+    ['privacyDataBody', 'privacy', 'dataBody'],
+    ['privacyCookiesBody', 'privacy', 'cookiesBody'],
+    ['privacyChatBody', 'privacy', 'chatBody'],
+    ['privacyThirdBody', 'privacy', 'thirdBody'],
+    ['privacyRetentionBody', 'privacy', 'retentionBody'],
+    ['privacyRightsBody', 'privacy', 'rightsBody'],
+    ['privacyChangesBody', 'privacy', 'changesBody'],
+    ['privacyContactBody', 'privacy', 'contactBody'],
+  ]
 
   async function api(path: string, init: RequestInit = {}): Promise<{ ok: boolean; data: Json }> {
     const res = await fetch(path, { credentials: 'same-origin', ...init })
@@ -430,6 +572,9 @@ import Layout from '../../layouts/Layout.astro'
     }
     const cfg = (data.config ?? {}) as {
       site?: Record<string, unknown>
+      about?: Record<string, unknown>
+      contact?: Record<string, unknown>
+      privacy?: Record<string, unknown>
       ads?: Record<string, unknown>
       logo?: { custom?: boolean; v?: string }
     }
@@ -437,6 +582,10 @@ import Layout from '../../layouts/Layout.astro'
     for (const key of ['name', 'desc', 'footerNote', 'copyright', 'heroTitle', 'heroSubtitle', 'heroCta1', 'heroCta2']) {
       const value = cfg.site?.[key]
       field(form, key).value = typeof value === 'string' ? value : ''
+    }
+    for (const [formName, group, key] of PAGE_FIELDS) {
+      const value = cfg[group]?.[key]
+      fieldText(form, formName).value = typeof value === 'string' ? value : ''
     }
     field(form, 'adsEnabled').checked = cfg.ads?.enabled !== false
     field(form, 'sideRails').value = typeof cfg.ads?.sideRails === 'string' ? cfg.ads.sideRails : 'left'
@@ -448,6 +597,18 @@ import Layout from '../../layouts/Layout.astro'
   $('#site-form').addEventListener('submit', async e => {
     e.preventDefault()
     const form = e.currentTarget as HTMLFormElement
+
+    /* 页面内容三组按同一张表收集；服务端 normalizeSiteConfig 负责截断与丢弃空值 */
+    const about: Record<string, string> = {}
+    const contact: Record<string, string> = {}
+    const privacy: Record<string, string> = {}
+    for (const [formName, group, key] of PAGE_FIELDS) {
+      const value = fieldText(form, formName).value
+      if (group === 'about') about[key] = value
+      else if (group === 'contact') contact[key] = value
+      else privacy[key] = value
+    }
+
     const { ok, data } = await api('/api/admin/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -462,6 +623,9 @@ import Layout from '../../layouts/Layout.astro'
           heroCta1: field(form, 'heroCta1').value,
           heroCta2: field(form, 'heroCta2').value,
         },
+        about,
+        contact,
+        privacy,
         ads: {
           enabled: field(form, 'adsEnabled').checked,
           sideRails: field(form, 'sideRails').value,

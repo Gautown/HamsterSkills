@@ -24,18 +24,27 @@ const REPO_ISSUES = 'https://github.com/Gautown/HamsterSkills/issues'
   <div class="container contact-wrap">
     <header class="contact-head">
       <h1>{t.contactTitle}</h1>
-      <p class="contact-sub">{t.contactSub}</p>
+      <p class="contact-sub" data-contact-sub>{t.contactSub}</p>
     </header>
 
     <section class="contact-card">
       <h2>{t.contactGithubTitle}</h2>
-      <p>{t.contactGithubBody}</p>
+      <p data-contact-github>{t.contactGithubBody}</p>
       <a class="btn btn-filled" href={REPO_ISSUES} target="_blank" rel="noopener">{t.contactGithubAction}</a>
+    </section>
+
+    {/*
+      邮箱卡片：默认隐藏，后台「联系页」配置了联系邮箱后由站点加载器
+      填充 mailto 链接并解除隐藏（未配置时不显示，避免空卡片）。
+    */}
+    <section class="contact-card" data-contact-email-card hidden>
+      <h2>{t.contactEmailTitle}</h2>
+      <a class="btn btn-filled" data-contact-email-link href="mailto:" rel="noopener"></a>
     </section>
 
     <section class="contact-card">
       <h2>{t.contactCopyrightTitle}</h2>
-      <p>{t.contactCopyrightBody}</p>
+      <p data-contact-copyright>{t.contactCopyrightBody}</p>
     </section>
 
     <div class="contact-cta">
