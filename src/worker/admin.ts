@@ -14,10 +14,15 @@
  *   GET  /api/admin/config      读取完整配置（需会话）。
  *   PUT  /api/admin/config      写入配置（需会话 + 同源）。
  *   POST /api/admin/credentials 改账户/密码（需会话 + 同源 + 当前密码复核）。
+ *   GET  /api/site-logo         公开：自定义导航栏 logo（KV 里的图片字节）；
+ *                                未上传时 404，前端回退静态 /logo.svg。
+ *   POST /api/admin/logo        上传 logo（dataURL，≤200KB，需会话 + 同源）。
+ *   DELETE /api/admin/logo      恢复默认 logo（需会话 + 同源）。
  *
  * 存储全部落在 SITE_KV（与聊天计数共用一个 KV namespace，键前缀隔离，
  * 省一次「wrangler kv namespace create + 改配置」的人工步骤）：
  *   cfg:site     站点配置 JSON（normalizeSiteConfig 之后的形状）
+ *   cfg:logo     自定义 logo {mime, data(base64), v(版本戳)}
  *   adm:cred     管理员凭据 {u, s, h, i}——PBKDF2-SHA256 哈希 + 盐，绝不存明文
  *   adm:ses:*    会话（随机 256bit token → {u, exp}，TTL 24 小时）
  *   adm:rl:*     登录限流计数（每 IP 每分钟，KV eventual consistency 下 best-effort）
@@ -32,18 +37,39 @@ import type { KvNamespace } from './chat'
  */
 import { safeEqual } from './refresh-auth.ts'
 
+/**
+ * 比聊天用的最小接口多一个 delete：logo 需要真正的删除（恢复默认）。
+ * 真实 Workers KV 绑定天然满足；测试用 FakeKV 补一个即可。
+ */
+export interface AdminKv extends KvNamespace {
+  delete(key: string): Promise<void>
+}
+
 export interface AdminEnv {
-  SITE_KV?: KvNamespace
+  SITE_KV?: AdminKv
   ADMIN_SETUP_KEY?: string
 }
 
 /* ------------------------------- 常量 ------------------------------- */
 
-/** KV 键名：凭据 / 站点配置 / 会话 / 登录限流 */
+/** KV 键名：凭据 / 站点配置 / 自定义 logo / 会话 / 登录限流 */
 const CRED_KEY = 'adm:cred'
 const CONFIG_KEY = 'cfg:site'
+const LOGO_KEY = 'cfg:logo'
 const sessionKey = (token: string) => `adm:ses:${token}`
 const rateKey = (ip: string) => `adm:rl:${ip}`
+
+/** logo 上限与允许类型（SVG 会带 CSP sandbox 头，见 publicLogo） */
+const MAX_LOGO_BYTES = 200 * 1024
+const LOGO_DATA_URL_RE = /^data:(image\/(?:png|jpeg|webp|gif|svg\+xml));base64,([A-Za-z0-9+/]+={0,2})$/
+
+interface StoredLogo {
+  mime: string
+  /** 不含 dataURL 前缀的 base64 图片数据 */
+  data: string
+  /** 版本戳：上传时生成，用作缓存失效参数 */
+  v: string
+}
 
 /** 会话有效期（秒）——与 cookie Max-Age、KV expirationTtl 三处保持一致 */
 const SESSION_TTL_SEC = 86_400
@@ -60,6 +86,23 @@ export interface SiteText {
   name?: string
   desc?: string
   footerNote?: string
+  /** 页脚版权行（配置后显示在备注左侧，如 © 2026 仓鼠AI技能库） */
+  copyright?: string
+  /** 首页 Hero 主标题（留空沿用各语言默认文案） */
+  heroTitle?: string
+  /** 首页 Hero 副标题 */
+  heroSubtitle?: string
+  /** Hero 主按钮文案（右侧箭头由模板保留） */
+  heroCta1?: string
+  /** Hero 次按钮文案 */
+  heroCta2?: string
+}
+
+/** 自定义 logo 的元信息（图片本体存在 KV 的 cfg:logo，见 logo 端点） */
+export interface LogoMeta {
+  custom: boolean
+  /** 版本戳：上传时生成，加载器用它做缓存失效（/api/site-logo?v=…） */
+  v?: string
 }
 
 export interface AdsConfig {
@@ -85,7 +128,16 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
 }
 
 /** 展示文本字段的上限：配置端会截断，前端不必再校验 */
-const TEXT_LIMITS = { name: 40, desc: 120, footerNote: 80 } as const
+const TEXT_LIMITS = {
+  name: 40,
+  desc: 120,
+  footerNote: 80,
+  copyright: 120,
+  heroTitle: 60,
+  heroSubtitle: 160,
+  heroCta1: 20,
+  heroCta2: 20,
+} as const
 
 function cleanText(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return undefined
@@ -111,12 +163,10 @@ export function normalizeSiteConfig(raw: unknown): SiteConfig {
 
   /* 未设置的字段直接省略键（而非置 undefined）：KV 序列化后更小，deepEqual 也更直观 */
   const site: SiteText = {}
-  const name = cleanText(siteIn.name, TEXT_LIMITS.name)
-  if (name !== undefined) site.name = name
-  const desc = cleanText(siteIn.desc, TEXT_LIMITS.desc)
-  if (desc !== undefined) site.desc = desc
-  const footerNote = cleanText(siteIn.footerNote, TEXT_LIMITS.footerNote)
-  if (footerNote !== undefined) site.footerNote = footerNote
+  for (const key of Object.keys(TEXT_LIMITS) as Array<keyof typeof TEXT_LIMITS>) {
+    const value = cleanText(siteIn[key], TEXT_LIMITS[key])
+    if (value !== undefined) site[key] = value
+  }
 
   return {
     site,
@@ -305,11 +355,84 @@ async function readConfig(env: AdminEnv): Promise<SiteConfig> {
   }
 }
 
+async function readStoredLogo(env: AdminEnv): Promise<StoredLogo | null> {
+  if (!env.SITE_KV) return null
+  const raw = await env.SITE_KV.get(LOGO_KEY)
+  if (!raw) return null
+  try {
+    const logo = JSON.parse(raw) as StoredLogo
+    return typeof logo.mime === 'string' && typeof logo.data === 'string' && typeof logo.v === 'string' ? logo : null
+  } catch {
+    return null
+  }
+}
+
+async function readLogoMeta(env: AdminEnv): Promise<LogoMeta> {
+  const logo = await readStoredLogo(env)
+  return logo ? { custom: true, v: logo.v } : { custom: false }
+}
+
+/** 配置 + logo 元信息的完整对外形状（公开端点与后台读取共用） */
+async function configWithLogo(env: AdminEnv): Promise<SiteConfig & { logo: LogoMeta }> {
+  return { ...(await readConfig(env)), logo: await readLogoMeta(env) }
+}
+
 /* ----------------------------- 端点 ----------------------------- */
 
 async function publicConfig(env: AdminEnv): Promise<Response> {
-  const config = await readConfig(env)
+  const config = await configWithLogo(env)
   return json(config, 200, { 'Cache-Control': 'public, max-age=120' })
+}
+
+/** 公开端点：把 KV 里存的自定义 logo 字节原样吐出；未上传时 404（前端回退静态图标） */
+async function publicLogo(env: AdminEnv): Promise<Response> {
+  const logo = await readStoredLogo(env)
+  if (!logo) return json({ error: '未设置自定义 logo' }, 404)
+  let bytes: Uint8Array<ArrayBuffer>
+  try {
+    bytes = Uint8Array.from(atob(logo.data), c => c.charCodeAt(0))
+  } catch {
+    return json({ error: 'logo 数据损坏' }, 500)
+  }
+  return new Response(bytes, {
+    headers: {
+      'Content-Type': logo.mime,
+      'Cache-Control': 'public, max-age=300',
+      // SVG 是脚本载体：即使只有管理员能上传，也按沙箱口径吐字节，
+      // 直接打开 /api/site-logo 时脚本不会执行（纵深防御）
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
+}
+
+async function uploadLogo(request: Request, env: AdminEnv, username: string): Promise<Response> {
+  if (!sameOrigin(request)) return json({ error: '跨站请求被拒绝' }, 403)
+  const body = await readBody(request)
+  if (!body) return json({ error: '请求体不是合法 JSON' }, 400)
+  const dataUrl = str(body.dataUrl)
+  // 先做字符串级大小闸：base64 长度 ×3/4 ≈ 解码后字节数
+  if (!dataUrl || dataUrl.length > Math.ceil(MAX_LOGO_BYTES / 3) * 4 + 100) {
+    return json({ error: `图片需为 200KB 以内的 png/jpeg/webp/gif/svg` }, 413)
+  }
+  const m = dataUrl.match(LOGO_DATA_URL_RE)
+  if (!m) return json({ error: '仅支持 png / jpeg / webp / gif / svg 的 base64 dataURL' }, 400)
+  const [, mime, data] = m
+  if (Math.floor((data.length * 3) / 4) > MAX_LOGO_BYTES) {
+    return json({ error: '图片超过 200KB 上限' }, 413)
+  }
+  const v = `${Date.now().toString(36)}-${makeToken().slice(0, 8)}`
+  const stored: StoredLogo = { mime, data, v }
+  await env.SITE_KV!.put(LOGO_KEY, JSON.stringify(stored))
+  console.log(`[admin] ${username} 更新了自定义 logo（${mime}）`)
+  return json({ ok: true, logo: { custom: true, v } })
+}
+
+async function deleteLogo(request: Request, env: AdminEnv, username: string): Promise<Response> {
+  if (!sameOrigin(request)) return json({ error: '跨站请求被拒绝' }, 403)
+  await env.SITE_KV!.delete(LOGO_KEY)
+  console.log(`[admin] ${username} 恢复了默认 logo`)
+  return json({ ok: true, logo: { custom: false } })
 }
 
 async function setup(request: Request, env: AdminEnv): Promise<Response> {
@@ -411,6 +534,7 @@ export async function handleAdminApi(request: Request, env: AdminEnv): Promise<R
 
   // 公开端点不要求 SITE_KV：未绑定时返回默认配置，前端加载器走内置基线
   if (pathname === '/api/site-config') return publicConfig(env)
+  if (pathname === '/api/site-logo') return publicLogo(env)
 
   if (!pathname.startsWith('/api/admin/')) return json({ error: '未知接口' }, 404)
   if (!env.SITE_KV) return json({ error: '后台存储未绑定（SITE_KV）' }, 503)
@@ -431,7 +555,17 @@ export async function handleAdminApi(request: Request, env: AdminEnv): Promise<R
     case 'GET config': {
       const gate = await requireSession(request, env)
       if (gate.ok === false) return gate.response
-      return json({ ok: true, config: await readConfig(env) })
+      return json({ ok: true, config: await configWithLogo(env) })
+    }
+    case 'POST logo': {
+      const gate = await requireSession(request, env)
+      if (gate.ok === false) return gate.response
+      return uploadLogo(request, env, gate.username)
+    }
+    case 'DELETE logo': {
+      const gate = await requireSession(request, env)
+      if (gate.ok === false) return gate.response
+      return deleteLogo(request, env, gate.username)
     }
     case 'PUT config': {
       const gate = await requireSession(request, env)

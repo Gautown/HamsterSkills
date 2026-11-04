@@ -71,9 +71,45 @@ import Layout from '../../layouts/Layout.astro'
           <span>站点描述</span>
           <input name="desc" maxlength="120" placeholder="页脚与展示用一句话介绍" />
         </label>
+
+        <h3 class="admin-h3">导航栏 Logo</h3>
+        <div class="admin-logo">
+          <img id="logo-preview" src="/logo.svg" alt="当前 logo 预览" width="48" height="48" />
+          <div class="admin-logo-actions">
+            <input id="logo-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" />
+            <button class="admin-btn admin-btn-ghost" type="button" id="logo-reset">恢复默认</button>
+          </div>
+        </div>
+        <p class="admin-hint">png / jpeg / webp / gif / svg，≤200KB；选择文件后自动上传（无需再点保存配置）。</p>
+        <p class="admin-msg" id="logo-msg" role="status"></p>
+
+        <h3 class="admin-h3">首页 Hero 文案</h3>
+        <p class="admin-hint">仅作用于五语言首页首屏；标题留空沿用各语言默认文案。</p>
+        <label class="admin-label">
+          <span>主标题</span>
+          <input name="heroTitle" maxlength="60" placeholder="如：仓鼠AI技能库" />
+        </label>
+        <label class="admin-label">
+          <span>副标题</span>
+          <input name="heroSubtitle" maxlength="160" placeholder="一句话说明站点做什么" />
+        </label>
+        <label class="admin-label">
+          <span>主按钮文案</span>
+          <input name="heroCta1" maxlength="20" placeholder="如：浏览全部技能" />
+        </label>
+        <label class="admin-label">
+          <span>次按钮文案</span>
+          <input name="heroCta2" maxlength="20" placeholder="如：按分类浏览" />
+        </label>
+
+        <h3 class="admin-h3">页脚</h3>
         <label class="admin-label">
           <span>页脚备注</span>
           <input name="footerNote" maxlength="80" placeholder="替换页脚右侧的 Built with Astro" />
+        </label>
+        <label class="admin-label">
+          <span>版权行</span>
+          <input name="copyright" maxlength="120" placeholder="如：© 2026 仓鼠AI技能库（留空则不显示）" />
         </label>
 
         <h3 class="admin-h3">广告模块（Ezoic）</h3>
@@ -211,6 +247,29 @@ import Layout from '../../layouts/Layout.astro'
     width: 16px;
     height: 16px;
     accent-color: #533afd;
+  }
+  .admin-logo {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .admin-logo img {
+    width: 48px;
+    height: 48px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 4px;
+    background: var(--surface);
+  }
+  .admin-logo-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .admin-logo-actions input[type='file'] {
+    font-size: 12px;
+    max-width: 320px;
   }
   .admin-btn {
     align-self: flex-start;
@@ -369,15 +428,21 @@ import Layout from '../../layouts/Layout.astro'
       say('login-msg', errMsg(data, '会话已过期，请重新登录'))
       return
     }
-    const cfg = (data.config ?? {}) as { site?: Record<string, unknown>; ads?: Record<string, unknown> }
+    const cfg = (data.config ?? {}) as {
+      site?: Record<string, unknown>
+      ads?: Record<string, unknown>
+      logo?: { custom?: boolean; v?: string }
+    }
     const form = $('#site-form') as HTMLFormElement
-    field(form, 'name').value = typeof cfg.site?.name === 'string' ? cfg.site.name : ''
-    field(form, 'desc').value = typeof cfg.site?.desc === 'string' ? cfg.site.desc : ''
-    field(form, 'footerNote').value = typeof cfg.site?.footerNote === 'string' ? cfg.site.footerNote : ''
+    for (const key of ['name', 'desc', 'footerNote', 'copyright', 'heroTitle', 'heroSubtitle', 'heroCta1', 'heroCta2']) {
+      const value = cfg.site?.[key]
+      field(form, key).value = typeof value === 'string' ? value : ''
+    }
     field(form, 'adsEnabled').checked = cfg.ads?.enabled !== false
     field(form, 'sideRails').value = typeof cfg.ads?.sideRails === 'string' ? cfg.ads.sideRails : 'left'
     field(form, 'anchor').checked = cfg.ads?.anchor === true
     field(form, 'vignette').checked = cfg.ads?.vignette === true
+    updateLogoPreview(cfg.logo?.custom === true && cfg.logo.v ? `/api/site-logo?v=${cfg.logo.v}` : '/logo.svg')
   }
 
   $('#site-form').addEventListener('submit', async e => {
@@ -391,6 +456,11 @@ import Layout from '../../layouts/Layout.astro'
           name: field(form, 'name').value,
           desc: field(form, 'desc').value,
           footerNote: field(form, 'footerNote').value,
+          copyright: field(form, 'copyright').value,
+          heroTitle: field(form, 'heroTitle').value,
+          heroSubtitle: field(form, 'heroSubtitle').value,
+          heroCta1: field(form, 'heroCta1').value,
+          heroCta2: field(form, 'heroCta2').value,
         },
         ads: {
           enabled: field(form, 'adsEnabled').checked,
@@ -401,6 +471,53 @@ import Layout from '../../layouts/Layout.astro'
       }),
     })
     say('site-msg', ok ? '已保存，约 2-5 分钟内全站生效' : errMsg(data, '保存失败'), ok)
+  })
+
+  /* ------------------------------ 导航栏 Logo ------------------------------ */
+
+  const logoInput = $('#logo-file') as HTMLInputElement
+  const logoPreview = $('#logo-preview') as HTMLImageElement
+  const updateLogoPreview = (src: string) => {
+    logoPreview.src = src
+  }
+
+  logoInput.addEventListener('change', async () => {
+    const file = logoInput.files?.[0]
+    if (!file) return
+    if (file.size > 200 * 1024) {
+      say('logo-msg', '图片需在 200KB 以内')
+      logoInput.value = ''
+      return
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })
+    const { ok, data } = await api('/api/admin/logo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl }),
+    })
+    logoInput.value = ''
+    if (!ok) {
+      say('logo-msg', errMsg(data, '上传失败'))
+      return
+    }
+    const logo = data.logo as { v?: string } | undefined
+    updateLogoPreview(`/api/site-logo?v=${logo?.v ?? Date.now()}`)
+    say('logo-msg', '已更新（全站最长约 5 分钟内可见）', true)
+  })
+
+  $('#logo-reset').addEventListener('click', async () => {
+    const { ok, data } = await api('/api/admin/logo', { method: 'DELETE' })
+    if (!ok) {
+      say('logo-msg', errMsg(data, '恢复失败'))
+      return
+    }
+    updateLogoPreview('/logo.svg')
+    say('logo-msg', '已恢复默认 logo', true)
   })
 
   $('#cred-form').addEventListener('submit', async e => {

@@ -34,7 +34,15 @@ class FakeKV {
     this.map.set(key, value)
     return Promise.resolve()
   }
+  delete(key) {
+    this.map.delete(key)
+    return Promise.resolve()
+  }
 }
+
+/** 1×1 透明 PNG 的 dataURL：logo 上传校验的最小合法样本 */
+const PNG_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
 const base = 'https://skill.gautown.top'
 const jsonReq = (method, path, body, extraHeaders = {}) =>
@@ -112,7 +120,7 @@ test('公开配置：无 KV 返回默认；写后读回归一化结果', async (
   const kv = new FakeKV()
   const noKv = await handleAdminApi(new Request(base + '/api/site-config'), { SITE_KV: undefined })
   assert.equal(noKv.status, 200)
-  assert.deepEqual(await noKv.json(), DEFAULT_SITE_CONFIG)
+  assert.deepEqual(await noKv.json(), { ...DEFAULT_SITE_CONFIG, logo: { custom: false } })
 
   await kv.map.set('cfg:site', JSON.stringify({ site: { name: '站长站' }, ads: { sideRails: 'both' } }))
   const res = await handleAdminApi(new Request(base + '/api/site-config'), env(kv))
@@ -247,4 +255,75 @@ test('未知接口 404；SITE_KV 缺失时管理端点 503', async () => {
   assert.equal(unknown.status, 404)
   const noKv = await handleAdminApi(new Request(base + '/api/admin/login'), { SITE_KV: undefined })
   assert.equal(noKv.status, 503)
+})
+
+test('新增站点字段：Hero 文案 / 版权行 归一化（截断、去空白、空值省略）', () => {
+  const cfg = normalizeSiteConfig({
+    site: {
+      heroTitle: '  全新   标题 ',
+      heroSubtitle: 'x'.repeat(300),
+      heroCta1: '开始',
+      heroCta2: '',
+      copyright: '© 2026 仓鼠',
+    },
+  })
+  assert.equal(cfg.site.heroTitle, '全新 标题')
+  assert.equal(cfg.site.heroSubtitle.length, 160)
+  assert.equal(cfg.site.heroCta1, '开始')
+  assert.equal(cfg.site.heroCta2, undefined)
+  assert.equal(cfg.site.copyright, '© 2026 仓鼠')
+})
+
+test('Logo：未登录 401；坏 dataURL 400；上传后公开端点可读 + 元信息、恢复默认后 404', async () => {
+  const kv = new FakeKV()
+  const setupKey = 'k'
+  await handleAdminApi(
+    jsonReq('POST', '/api/admin/setup', { username: 'boss', password: 'password9' }, { 'x-setup-key': setupKey }),
+    env(kv, setupKey),
+  )
+  const login = await handleAdminApi(jsonReq('POST', '/api/admin/login', { username: 'boss', password: 'password9' }), env(kv, setupKey))
+  const token = tokenOf(login)
+  const authHeaders = { Cookie: `hamster_admin=${token}`, Origin: base }
+
+  // 未登录上传：401
+  const anon = await handleAdminApi(jsonReq('POST', '/api/admin/logo', { dataUrl: PNG_DATA_URL }), env(kv, setupKey))
+  assert.equal(anon.status, 401)
+
+  // 非图片 dataURL：400
+  const bad = await handleAdminApi(
+    jsonReq('POST', '/api/admin/logo', { dataUrl: 'data:text/html;base64,AAAA' }, authHeaders),
+    env(kv, setupKey),
+  )
+  assert.equal(bad.status, 400)
+
+  // 正常上传
+  const up = await handleAdminApi(jsonReq('POST', '/api/admin/logo', { dataUrl: PNG_DATA_URL }, authHeaders), env(kv, setupKey))
+  assert.equal(up.status, 200)
+  const upBody = await up.json()
+  assert.equal(upBody.logo.custom, true)
+  assert.ok(upBody.logo.v)
+
+  // 公开端点：字节、类型与沙箱头
+  const got = await handleAdminApi(new Request(base + '/api/site-logo'), env(kv, setupKey))
+  assert.equal(got.status, 200)
+  assert.equal(got.headers.get('Content-Type'), 'image/png')
+  assert.match(got.headers.get('Content-Security-Policy') ?? '', /default-src 'none'/)
+  assert.ok(new Uint8Array(await got.arrayBuffer()).length > 50)
+
+  // 公开配置带上 logo 元信息（前端据此切换 /api/site-logo）
+  const pub = await (await handleAdminApi(new Request(base + '/api/site-config'), env(kv, setupKey))).json()
+  assert.equal(pub.logo.custom, true)
+
+  // 恢复默认：删除后 404、元信息回到 false
+  const del = await handleAdminApi(
+    new Request(base + '/api/admin/logo', { method: 'DELETE', headers: { Cookie: `hamster_admin=${token}`, Origin: base } }),
+    env(kv, setupKey),
+  )
+  assert.equal(del.status, 200)
+  assert.equal((await handleAdminApi(new Request(base + '/api/site-logo'), env(kv, setupKey))).status, 404)
+  const pub2 = await (await handleAdminApi(new Request(base + '/api/site-config'), env(kv, setupKey))).json()
+  assert.equal(pub2.logo.custom, false)
+
+  // 无 KV 的公开端点也不炸：404（无自定义）而不是 500
+  assert.equal((await handleAdminApi(new Request(base + '/api/site-logo'), { SITE_KV: undefined })).status, 404)
 })

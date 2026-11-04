@@ -97,7 +97,7 @@ const currentQuery = Astro.url.searchParams.get('search') ?? ''
 <header class="site-header">
   <div class="container header-inner">
     <a class="brand" href={homePath}>
-      <img class="brand-logo" src="/logo.svg" alt={t.siteName} width="48" height="48" />
+      <img class="brand-logo" data-site-logo src="/logo.svg" alt={t.siteName} width="48" height="48" />
       <span data-site-name>{t.siteName}</span>
     </a>
 

@@ -20,6 +20,10 @@ const t = T[lang]
 <footer class="site-footer">
   <div class="container">
     <span><span data-site-name>{t.siteName}</span> · <span data-site-desc>{t.siteDesc}</span></span>
-    <span data-footer-note>Built with Astro</span>
+    <span class="footer-note-line">
+      {/* 版权行：默认留空，加载器按后台配置填充；未配置时整段（含分隔点）不显示 */}
+      <span data-copyright></span>
+      <span data-footer-note>Built with Astro</span>
+    </span>
   </div>
 </footer>

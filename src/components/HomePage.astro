@@ -31,14 +31,15 @@ const previewSkills = skills.slice(0, GRID_PREVIEW)
       排序控件不在这里——它属于下面技能网格的 section-head。
     */}
     <div class="hero-head">
-      <h1>{t.heroTitle}</h1>
+      <h1 data-hero-title>{t.heroTitle}</h1>
       <div class="cta-row">
-        <a class="btn btn-filled" href="#skill-grid">{t.browseAll} →</a>
-        <a class="btn btn-outline" href={`${base}/categories`}>{t.viewCategories}</a>
+        {/* 按钮文案包 span：后台覆盖时保留主按钮尾部的箭头装饰 */}
+        <a class="btn btn-filled" href="#skill-grid"><span data-hero-cta1>{t.browseAll}</span> →</a>
+        <a class="btn btn-outline" href={`${base}/categories`}><span data-hero-cta2>{t.viewCategories}</span></a>
       </div>
     </div>
 
-    <p class="hero-sub">{t.heroSub}</p>
+    <p class="hero-sub" data-hero-subtitle>{t.heroSub}</p>
 
     <div class="stats">
       <div class="stat">

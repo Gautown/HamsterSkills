@@ -2613,6 +2613,12 @@ h2 {
   gap: 8px;
 }
 
+/* 版权行：仅当后台配置了版权文字时才显示（连同分隔点一起出现） */
+.site-footer [data-copyright]:not(:empty)::after {
+  content: '·';
+  margin: 0 8px;
+}
+
 @media (min-width: 960px) {
   .detail-grid {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);

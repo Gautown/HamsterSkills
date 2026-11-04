@@ -23,7 +23,7 @@
 import { handleChat } from './chat'
 import type { KvNamespace } from './chat'
 import { authorized } from './refresh-auth'
-import { handleAdminApi } from './admin'
+import { handleAdminApi, type AdminKv } from './admin'
 
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> }
@@ -36,7 +36,7 @@ interface Env {
   CHAT_RATE_LIMIT?: string
   CHAT_DAILY_LIMIT?: string
   CHAT_QUOTA?: KvNamespace
-  SITE_KV?: KvNamespace
+  SITE_KV?: AdminKv
   ADMIN_SETUP_KEY?: string
 }
 

@@ -96,8 +96,9 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     {/*
       站点配置运行时加载器（全站页面，管理后台 /admin/ 写 KV、本脚本读 API）：
-      - 站点参数（名称/描述/页脚备注）由它拉取 /api/site-config 覆盖
-        [data-site-name] 等锚点；localStorage 镜像 5 分钟，多数页面零网络请求。
+      - 站点参数（名称/描述/页脚备注/版权行/首页 Hero 文案）与自定义 logo
+        由它拉取 /api/site-config 覆盖 [data-site-name] 等锚点；
+        localStorage 镜像 5 分钟，多数页面零网络请求。
       - Ezoic 广告（ezAds 页面）也由配置驱动：总开关/Side Rails 方向/
         anchor/插屏决定是否注入官方脚本与 config 标志。
         脚本注入顺序保持官方要求 CMP → sa.min.js → 命令队列 → analytics，
@@ -117,6 +118,8 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
             if (c && typeof c._t === 'number' && Date.now() - c._t < TTL_MS) cached = c
           }
         } catch (e) {}
+        // 缓存命中先应用文本/logo（比等网络快）；广告注入保持同步判断
+        if (cached) whenReady(function () { applyText(cached.site); applyLogo(cached.logo) })
         if (adsWanted) injectAds(cached && cached.ads)
         fetch('/api/site-config').then(function (r) {
           return r.ok ? r.json() : null
@@ -124,7 +127,7 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
           if (!fresh || fresh.error) return
           fresh._t = Date.now()
           try { localStorage.setItem(KEY, JSON.stringify(fresh)) } catch (e) {}
-          applyText(fresh.site)
+          whenReady(function () { applyText(fresh.site); applyLogo(fresh.logo) })
         }).catch(function () {})
 
         function injectAds(ads) {
@@ -155,12 +158,23 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
           add('//ezoicanalytics.com/analytics.js')
         }
 
+        /** 加载器在 <head> 里跑：覆盖目标（如页脚/Hero）可能尚未解析，等 DOM 就绪再写 */
+        function whenReady(fn) {
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn)
+          else fn()
+        }
+
         function applyText(site) {
           if (!site) return
           var slots = [
             ['name', '[data-site-name]'],
             ['desc', '[data-site-desc]'],
             ['footerNote', '[data-footer-note]'],
+            ['copyright', '[data-copyright]'],
+            ['heroTitle', '[data-hero-title]'],
+            ['heroSubtitle', '[data-hero-subtitle]'],
+            ['heroCta1', '[data-hero-cta1]'],
+            ['heroCta2', '[data-hero-cta2]'],
           ]
           for (var i = 0; i < slots.length; i++) {
             var key = slots[i][0]
@@ -168,6 +182,14 @@ const xDefaultHref = altLinks.find(a => a.lang === LANG_META.zh.htmlLang)!.href
             var els = document.querySelectorAll(slots[i][1])
             for (var j = 0; j < els.length; j++) els[j].textContent = site[key]
           }
+        }
+
+        /** 自定义 logo：带版本戳做缓存失效；未上传时保持静态 /logo.svg */
+        function applyLogo(logo) {
+          if (!logo || logo.custom !== true || !logo.v) return
+          var src = '/api/site-logo?v=' + logo.v
+          var imgs = document.querySelectorAll('[data-site-logo]')
+          for (var i = 0; i < imgs.length; i++) imgs[i].src = src
         }
       })()
     </script>
