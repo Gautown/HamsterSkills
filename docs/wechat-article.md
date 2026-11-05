@@ -6,7 +6,9 @@
 >   2. 《8000+ AI 技能一键安装：我做了一个"AI 技能仓库"》
 >   3. 《它每天自动帮我收集全世界的新 AI 技能，我却几乎不用动手》
 > - 摘要（发布时填摘要框）：一个聚合全网 AI Agent Skills 的五语言站点：自动同步、AI 分类、复制即用、一键安装。
-> - 建议封面：首页截图（卡片区的渐变编号格很有辨识度）或吉祥物+标题的文字封面。
+> - 封面已生成：`docs/assets/wechat-cover.png`（900×383 首图，含站点渐变视觉与吉祥物）；
+>   分享小图 `docs/assets/wechat-cover-square.png`（383×383）；如需改文案重出，改
+>   `.cache/cover-text.json` 后重跑 `.cache/make-cover.ps1` 即可。
 > - 文中链接：skill.gautown.top（站点）、github.com/Gautown/HamsterSkills（仓库）。
 > - 若开通了"原文链接"，指到站点首页。
 
